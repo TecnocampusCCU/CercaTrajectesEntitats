@@ -76,7 +76,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.190205"
+Versio_modul="V_Q3.191115"
 nomBD1=""
 contra1=""
 host1=""
@@ -729,8 +729,15 @@ class CercaTrajectesEntitats:
         try:
             cur.execute(sql_xarxa)
             conn.commit()
-        except:
-            print ("ERROR SQL_XARXA")
+        except Exception as ex:
+            print ("CREATE Xarxa_Prova TABLE ERROR")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "CREATE Xarxa_Prova TABLE ERROR")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
         
         '''
         #==============================================
@@ -758,8 +765,15 @@ class CercaTrajectesEntitats:
             try:
                 cur.execute(drop)
                 conn.commit()
-            except:
+            except Exception as ex:
                 print ("Error DROP break adreça no trobada")
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print (message)
+                QMessageBox.information(None, "Error", "Error DROP break adreça no trobada")
+                conn.rollback()
+                self.eliminaTaulesCalcul(Fitxer)
+                return
             return
         
         '''
@@ -770,860 +784,1033 @@ class CercaTrajectesEntitats:
         self.dlg.lbl_numpol.setText(self.dlg.txt_nomCarrer.text() + " " + CNB[5:8] + " "+ CNB[-1])
         a=time.time()
         
-        '''Cálculo local'''
         if(self.dlg.chk_Local.isChecked()):
-            uri = QgsDataSourceUri()
-            try:
-                uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
-            except:
-                print ("Error a la connexio")
-            QApplication.processEvents()
-            sql_punts = 'SELECT * FROM \"' + self.dlg.comboCapaDesti.currentText() + '\"'
-            QApplication.processEvents()
-            uri.setDataSource("","("+sql_punts+")","geom","","id")
-            QApplication.processEvents()
-            end_lyr = QgsVectorLayer(uri.uri(False), "fin", "postgres")
-            QApplication.processEvents()
-            
-            sql_punt = 'SELECT * FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
-            QApplication.processEvents()
-            uri.setDataSource("","("+sql_punt+")","geom","","id")
-            QApplication.processEvents()
-            start_lyr = QgsVectorLayer(uri.uri(False), "inici", "postgres")
-            QApplication.processEvents()
-            
-            sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
-            cur.execute(sql_inici)
-            coordenadas = cur.fetchall()
-            start_point = ((str(coordenadas[0]))[1:-1])
-            
-            sql_xarxa="SELECT * FROM \"SegmentsXarxaCarrers\""
-            QApplication.processEvents()
-            uri.setDataSource("","("+sql_xarxa+")","the_geom","","id")
-            QApplication.processEvents()
-            network_lyr = QgsVectorLayer(uri.uri(False), "xarxa", "postgres")
-            QApplication.processEvents()
-            
-            resultado = self.calculo_Local(network_lyr,CNB,uri,start_point,end_lyr)
-            
-            
-            '''Borrar tramos sobrantes'''
-            features = resultado['OUTPUT'].getFeatures(QgsFeatureRequest().addOrderBy('cost',True))
-            limit = self.getLimit()
-            
-            resultado['OUTPUT'].startEditing()
-            fields = resultado['OUTPUT'].fields()
-            for x in range(len(fields)):
-                if('Nom' in fields[x].displayName()):
-                    resultado['OUTPUT'].renameAttribute(x,'NomEntitat')
-                elif(fields[x].displayName()=='id'):
-                    resultado['OUTPUT'].renameAttribute(x,'entitatid')
-                elif(fields[x].displayName()=='cost'):
-                    resultado['OUTPUT'].renameAttribute(x,'agg_cost') 
-            resultado['OUTPUT'].addAttribute(QgsField('ordre', QVariant.Int))
-            
-            resultado['OUTPUT'].commitChanges()
-            
-            
-            resultado['OUTPUT'].startEditing()
-            featureOrdreList = [] #Variable usada para después poder nombrar fácilmente las etiquetas
-            x=0
-            for feature in features:
-                if(x>=limit):
-                    resultado['OUTPUT'].deleteFeature(feature.id())
-                else:
-                    self.getIndexOrdre(resultado['OUTPUT'])
-                    resultado['OUTPUT'].changeAttributeValue(feature.id(),self.getIndexOrdre(resultado['OUTPUT']),x+1)
-                    featureOrdreList.append(feature.id())
-                x = x+1
-            resultado['OUTPUT'].commitChanges()
-      
-      
-            '''Borrar puntos sobrantes'''
-            puntos_destino = self.save_vlayer(end_lyr) 
-            puntos_destino['OUTPUT'].startEditing()
-            fields = puntos_destino['OUTPUT'].fields()
-            for x in range(len(fields)):
-                if('Nom' in fields[x].displayName()):
-                    puntos_destino['OUTPUT'].renameAttribute(x,'NomEntitat')
-                elif(fields[x].displayName()=='id'):
-                    puntos_destino['OUTPUT'].renameAttribute(x,'entitatid')
-                                
-            puntos_destino['OUTPUT'].addAttribute(QgsField('ordre', QVariant.Int))
-            puntos_destino['OUTPUT'].commitChanges()
-            
-            
-            features = puntos_destino['OUTPUT'].getFeatures()
-            puntos_destino['OUTPUT'].startEditing()
-            for feature in features: 
-                if(self.featureNotInResult(feature,resultado['OUTPUT'])):
-                    puntos_destino['OUTPUT'].deleteFeature(feature.id())
-                else:
-                    puntos_destino['OUTPUT'].changeAttributeValue(feature.id(),self.getIndexOrdre(puntos_destino['OUTPUT']),self.compareToGetOrdre(feature,resultado['OUTPUT']))
-            puntos_destino['OUTPUT'].commitChanges()
-            
-            
-            '''Borrar atributos sobrantes del resultado'''
-            resultado['OUTPUT'].startEditing()
-            indexAttributesToDelete = []
-            for x in range(len(resultado['OUTPUT'].attributeList())):
-                if(resultado['OUTPUT'].attributeDisplayName(x)!='ordre' and resultado['OUTPUT'].attributeDisplayName(x)!='entitatid' and resultado['OUTPUT'].attributeDisplayName(x)!='NomEntitat' and resultado['OUTPUT'].attributeDisplayName(x)!='agg_cost'):
-                    indexAttributesToDelete.append(x)
-            resultado['OUTPUT'].deleteAttributes(indexAttributesToDelete)
-            resultado['OUTPUT'].commitChanges()
- 
-            
-            '''Borrar atributos sobrantes de los destinos'''
-            puntos_destino['OUTPUT'].startEditing()
-            indexAttributesToDelete.clear()
-            for x in range(len(puntos_destino['OUTPUT'].attributeList())):
-                if(puntos_destino['OUTPUT'].attributeDisplayName(x)!='ordre' and puntos_destino['OUTPUT'].attributeDisplayName(x)!='entitatid' and puntos_destino['OUTPUT'].attributeDisplayName(x)!='NomEntitat'):
-                    indexAttributesToDelete.append(x)
-            puntos_destino['OUTPUT'].deleteAttributes(indexAttributesToDelete)
-            puntos_destino['OUTPUT'].commitChanges()
-            
-            
-            '''Representación en taulaResultat'''
-            rowCount = self.dlg.taulaResultat.rowCount()
-            self.dlg.taulaResultat.setColumnCount(2)
-            self.dlg.taulaResultat.setHorizontalHeaderLabels(['Entitat', lbl_Cost])
-            for x in range (rowCount,limit):
-                self.dlg.taulaResultat.insertRow(x)
-                feature = resultado['OUTPUT'].getFeature(featureOrdreList[x])
-                self.dlg.taulaResultat.setItem(x, 0, QTableWidgetItem(str(feature['NomEntitat'])))
-                self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(feature['agg_cost']))))
-
-          
-            '''Representación caminos de destino'''
-            titol=self.dlg.comboCapaDesti.currentText()
-            titol2='Camins més propers a '
-            titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-            #vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
-            #vlayer = QgsVectorLayer(resultado['OUTPUT'].source(), titol3.decode('utf8'), resultado['OUTPUT'].providerType())
-            vlayer = resultado['OUTPUT']
-            vlayer.setName(titol3.decode('utf8'))
-            QApplication.processEvents()
-            
-            if(vlayer.isValid):
-                Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                """Es carrega el Shape a l'entorn del QGIS"""
-                #vlayer = QgsVectorLayer(os.environ['TMP']+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-    
-                symbols = vlayer.renderer().symbols(QgsRenderContext())
-                symbol=symbols[0]
-                
-                '''Es prepara cada camí de la capa amb diferent color i gruix en funcio de la distància a la que estigui de l'origen '''
-                GradSymMin = 0
-                GradSymMax = limit
-                GradSymNoOfClasses = limit
-                #GradSymInterval = round(((int(GradSymMax) - int(GradSymMin)) / float(GradSymNoOfClasses)),0)
-                GradSymInterval = 1.0
-                myRangeList = []
-                gruix = 2.5
-                interval = float(gruix/limit)
-                
-                
-                for x in range (GradSymNoOfClasses):
-                    if x == 0:
-                        min = 0
-                        max = 1
-                        color = QColor(0, 255, 255*x/GradSymNoOfClasses)
-                    elif x == (GradSymNoOfClasses - 1):
-                        min = GradSymMax-1
-                        max = GradSymMax
-                        color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
-                    else:
-                        min = int(GradSymMin)+(GradSymInterval*x)+0.001
-                        max = int(GradSymMin)+GradSymInterval*(x+1)
-                        color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
-                    
-                    feature = resultado['OUTPUT'].getFeature(featureOrdreList[x])
-                    label = str(feature['ordre']) + ". " +str(feature['NomEntitat'])                    
-                    symbol=QgsLineSymbol()
-    
-                    registry = QgsSymbolLayerRegistry()
-                    lineMeta = registry.symbolLayerMetadata("SimpleLine")
-                    #Line layer
-                    lineLayer = lineMeta.createSymbolLayer({'width': '1', 'color': '255,0,0', 'offset': '0', 'penstyle': 'solid', 'use_custom_dash': '0', 'joinstyle': 'bevel', 'capstyle': 'round'})
-    
-                    symbol.deleteSymbolLayer(0)
-                    symbol.appendSymbolLayer(lineLayer)
-    
-                    symbol.setWidth(gruix)
-                    symbol.setColor(color)                          
-                    
-                    ranger = QgsRendererRange(min, max, symbol, label)
-                    myRangeList.append(ranger)
-                    gruix -= float(interval)
-    
-                '''Es renderitzen els estils de cada cami'''
-                fieldname='ordre'
-                format = QgsRendererRangeLabelFormat()
-                
-                '''S'apliquen els estils a la capa'''
-                renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
-                renderer.setLabelFormat(format,True)
-                
-                renderer.setOrderByEnabled(True)
-                listOrder = []
-                listOrder.append(QgsFeatureRequest().OrderByClause("ordre",True))
-                renderer.setOrderBy(QgsFeatureRequest().OrderBy(listOrder))
-                
-            
-                vlayer.setRenderer(renderer)
-                QApplication.processEvents()
-    
-                
-                QgsProject.instance().addMapLayer(vlayer,False)
-                root = QgsProject.instance().layerTreeRoot()
-                myLayerNode=QgsLayerTreeLayer(vlayer)
-                root.insertChildNode(0,myLayerNode)
-                myLayerNode.setCustomProperty("showFeatureCount", False)
-                QApplication.processEvents()
-                iface.mapCanvas().refresh()
-                ''''S'afegeix la capa a la pantalla'''
-                #iface.legendInterface().refreshLayerSymbology(vlayer)
-            else:
-                QMessageBox.information(None, "LAYER ERROR 1:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
-        
-            '''
-             # S'afegeixen els punts de destí a pantalla amb les corresponents etiquetes amb els seus noms
-            
-            # Es prepara el titol de la capa que apareixerà a la llegenda
-            '''
-            titol=self.dlg.comboCapaDesti.currentText()
-            titol2='Entitats de destí '
-            titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-            vlayer = puntos_destino['OUTPUT']
-            QApplication.processEvents()
-            '''
-            #  Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-            '''
-            if vlayer.isValid():
-                Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
-                """Es carrega el Shape a l'entorn del QGIS"""
-                vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-                #vlayer.setLayerTransparency(50)
-                symbols = vlayer.renderer().symbols(QgsRenderContext())
-                symbol=symbols[0]
-                symbol.setColor(QColor.fromRgb(250,50,250))
-                '''S'afegeixen totes les propietats a la capa: color, tipus de font de l'etiqueta, colocacio, nom del camp a mostrar, etc'''
-    
-                layer_settings  = QgsPalLayerSettings()
-                text_format = QgsTextFormat()
-                
-                text_format.setFont(QFont("Arial", 16))
-                text_format.setSize(16)
-                
-                buffer_settings = QgsTextBufferSettings()
-                buffer_settings.setEnabled(True)
-                buffer_settings.setSize(1)
-                buffer_settings.setColor(QColor("white"))
-                
-                text_format.setBuffer(buffer_settings)
-                layer_settings.setFormat(text_format)
-                
-                layer_settings.isExpression = True
-                layer_settings.fieldName = "concat( ordre,'. ',NomEntitat)"
-                layer_settings.placement = 2
-                layer_settings.scaleVisibility = True
-                layer_settings.minimumScale = 20000
-                layer_settings.maximumScale = 3000
-                
-                layer_settings.enabled = True
-                
-                layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-                vlayer.setLabelsEnabled(True)
-                vlayer.setLabeling(layer_settings)
-                vlayer.triggerRepaint()
-                QApplication.processEvents()
-                QgsProject.instance().addMapLayer(vlayer,False)
-                root = QgsProject.instance().layerTreeRoot()
-                myLayerNode=QgsLayerTreeLayer(vlayer)
-                root.insertChildNode(0,myLayerNode)
-                myLayerNode.setCustomProperty("showFeatureCount", False)
-                QApplication.processEvents()
-                ''''S'afegeix la capa a la pantalla'''
-                iface.mapCanvas().refresh()
-                #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
-            else:
-                QMessageBox.information(None, "LAYER ERROR 2:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
-                
-            '''
-            #  S'afegeix el punt d'origen a pantalla
-            
-            # Es prepara el titol de la capa que apareixerà a la llegenda
-            '''
-            titol=self.dlg.lbl_numpol.text()
-            titol2='Entitat d\'origen: '
-            titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-            vlayer = start_lyr
-            QApplication.processEvents()
-            '''
-            # Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-            '''
-            if vlayer.isValid():
-                Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                """Es carrega el Shape a l'entorn del QGIS"""
-                vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-                symbols = vlayer.renderer().symbols(QgsRenderContext())
-                symbol=symbols[0]
-                '''S'afegeix el color a la nova entitat'''
-                symbol.setColor(QColor.fromRgb(50,250,250))
-                QgsProject.instance().addMapLayer(vlayer,False)
-                root = QgsProject.instance().layerTreeRoot()
-                myLayerNode=QgsLayerTreeLayer(vlayer)
-                root.insertChildNode(0,myLayerNode)
-                myLayerNode.setCustomProperty("showFeatureCount", False)
-                QApplication.processEvents()
-                ''''S'afegeix la capa a la pantalla'''
-                iface.mapCanvas().refresh()
-                #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
-            else:
-                QMessageBox.information(None, "LAYER ERROR 3:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
-            
-            
-            
+            self.local(CNB)     
         
         else:
-            '''Cálculo en el servidor'''
-            '''
-            #==============================================
-            #    4. S'ajunten tots els punts tan de sortida com de destí en una sola taula per preparar-los per la
-            #    funció del PGRounting pgr_withPointsKSP: dintreilla + punts de la capa de destí
-            #    4.1 S'esborra i es crea una nova taula
-            # ==============================================
-            '''
-            drop = 'DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';'
-            try:
-                cur.execute(drop)
-                conn.commit()
-            except:
-                print ("DROP TABLE ERROR 1")
-            
-            create = 'CREATE TABLE NecessaryPoints_'+Fitxer+' (\n'
-            create += "\tpid    serial primary key,\n"
-            create += "\tthe_geom geometry,\n"
-            create += "\tentitatID int8,\n"
-            create += "\tedge_id BIGINT,\n"
-            create += "\tfraction FLOAT,\n"
-            create += "\tnewPoint geometry);"
-            try:
-                cur.execute(create)
-                conn.commit()
-            except:
-                print ("CREATE TABLE  NecessaryPoints ERROR")
-                
-            '''
-            #    4.2 S'afegeixen els punts necessaris a la taula
-            '''            
-            insert = 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID,the_geom) (SELECT 0, ST_Centroid("geom") the_geom from "dintreilla" where "Carrer_Num_Bis" = \''+CNB+'\');\n'
-            insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, the_geom) (SELECT "id", ST_Centroid("geom") the_geom from "' + self.dlg.comboCapaDesti.currentText() + '" order by "id");'
-            try:
-                cur.execute(insert)
-                conn.commit()
-            except:
-                print ("Insert Points  NecessaryPoints ERROR")
-            
-            '''
-            #    4.3 S'afegeix el id del tram al que estan més pròxims els punts, els punts projectats sobre el graf 
-            #    i la fracció de segment a on estant 
-            '''
-            update = 'UPDATE NecessaryPoints_'+Fitxer+' set "edge_id"=tram_proper."tram_id" from (SELECT distinct on(Poi."pid") Poi."pid" As Punt_id,Sg."id" as Tram_id, ST_Distance(Sg."the_geom",Poi."the_geom")  as dist FROM "Xarxa_Prova" as Sg,NecessaryPoints_'+Fitxer+' AS Poi ORDER BY  Poi."pid",ST_Distance(Sg."the_geom",Poi."the_geom"),Sg."id") tram_proper where NecessaryPoints_'+Fitxer+'."pid"=tram_proper."punt_id";\n'
-            update += 'UPDATE NecessaryPoints_'+Fitxer+' SET fraction = ST_LineLocatePoint(e.the_geom, NecessaryPoints_'+Fitxer+'.the_geom),newPoint = ST_LineInterpolatePoint(e."the_geom", ST_LineLocatePoint(e."the_geom", NecessaryPoints_'+Fitxer+'."the_geom")) FROM "Xarxa_Prova" AS e WHERE NecessaryPoints_'+Fitxer+'."edge_id" = e."id";\n'
-            try:
-                cur.execute(update)
-                conn.commit()
-            except:
-                print ("Update Points  NecessaryPoints ERROR")
-                
-            '''
-            #    4.4 Es fa una consulta per poder generar una sentencia SQL que faci la cerca de
-            #    tots els camins més curts a tots el punts necessaris
-            '''
-            select = 'select * from NecessaryPoints_'+Fitxer+' order by pid'
-            cur.execute(select)
-            vec = cur.fetchall() 
-            create = 'create local temp table "Resultat" as SELECT * FROM (\n'
-            for x in range (0,len(vec)):
-                if x < len(vec) and x >= 2:
-                    create += 'UNION\n'
-                if x != 0:
-                    if vec[x][4] == 1.0 or vec[x][4] == 0.0:
-                        create += 'select '+ str(x) +' as routeID,'+ str(vec[x][2]) +' as entitatID, * from pgr_withPointsKSP(\'SELECT id, source, target, cost, reverse_cost FROM "Xarxa_Prova" ORDER BY id\',\'SELECT pid, edge_id, fraction from NecessaryPoints_'+Fitxer+'\',-1,' + str(vec[x][2])+',1)\n'
-                    else:
-                        create += 'select '+ str(x) +' as routeID,'+ str(vec[x][2]) +' as entitatID, * from pgr_withPointsKSP(\'SELECT id, source, target, cost, reverse_cost FROM "Xarxa_Prova" ORDER BY id\',\'SELECT pid, edge_id, fraction from NecessaryPoints_'+Fitxer+'\',-1,-' + str(vec[x][0]) +',1)\n'
-            create += ')QW ORDER BY routeID, seq;'
-            
-            '''
-            #    4.5 Selecció del nom del camp on figura el Nom de l'entitat de destí
-            '''
-            try:
-                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'Nom%';"
-                cur.execute(select)
-                nomCamp = cur.fetchall()
-            except:
-                print ("Error SELECT CAMP NOM")
-                
-            '''
-            #    5. Destrucció i creació de la taula on figuren tots els camins possibles
-            '''
-            drop = 'DROP TABLE IF EXISTS "Resultat";'
-            try:
-                cur.execute(drop)
-                conn.commit()
-            except:
-                print ("DROP TABLE ERROR 2")
-            
-            try:
-                cur.execute(create)
-                conn.commit()
-            except:
-                print ("CREATE TABLE Resultat global ERROR")
-            
-            '''
-            #    6. Destrucció i creació de la taula "Segments finals" on figuren tots els camins possibles que són prinicipi i/o final
-            '''
-    
-            drop = "DROP TABLE IF EXISTS \"SegmentsFinals\";"
-            try:
-                cur.execute(drop)
-                conn.commit()
-            except:
-                print ("DROP TABLE ERROR 1")
-            
-            create = "CREATE local temp TABLE \"SegmentsFinals\" (\n"
-            create += "\trouteid int8,\n"
-            create += "\tedge int8,\n"
-            create += "\t\"edgeAnt\" int8,\n"
-            create += "\tfraction FLOAT,\n"
-            create += "\t\"ordreTram\" int8,\n"
-            create += "\t\"cutEdge\" geometry);"
-            try:
-                cur.execute(create)
-                conn.commit()
-            except:
-                print ("CREATE TABLE  SegmentsFinals ERROR")
-                
-            '''
-            #    6.1 Query per seleccionar els segments que són inici i final
-            '''
-            select = 'select routeid, node, edge from "Resultat" order by routeid, path_seq;'
-            try:
-                cur.execute(select)
-                vec = cur.fetchall()
-                conn.commit()
-            except:
-                print ("SELECT Resultat ERROR")
-                
-            insert = ''
-            for x in range (len(vec)):
-                if vec[x][1] < 0:
-                    if vec[x][1] != -1:
-                        insert += 'INSERT INTO "SegmentsFinals" (routeid, edge, "edgeAnt", "ordreTram") VALUES (' + str(vec[x][0]) + ', ' + str(vec[x-1][2]) + ', ' + str(vec[x-2][2]) + ', ' + str(2) +');\n'
-                    else:
-                        insert += 'INSERT INTO "SegmentsFinals" (routeid, edge, "edgeAnt", "ordreTram") VALUES (' + str(vec[x][0]) + ', ' + str(vec[x][2]) + ', ' + str(vec[x+1][2]) + ', ' + str(1) + ');\n'
-            try:
-                cur.execute(insert)
-                conn.commit()
-            except:
-                print ("INSERT TABLE  SegmentsFinals ERROR")
-                
-            '''
-            #    6.2 UPDATE per poder afegir la fracció en què es troba el punt sobre el segment
-            '''
-            select = 'select routeid, edge, "ordreTram" from "SegmentsFinals" order by routeid, "ordreTram";'
-            try:
-                cur.execute(select)
-                vec = cur.fetchall()
-                conn.commit()
-            except:
-                print ("SELECT SegmentsFinals ERROR")
-    
-            update = ''
-            for x in range(len(vec)):
-                ruta = vec[x][0]
-                edge = vec[x][1]
-                ordre = vec[x][2]
-                if ordre == 1:
-                    update += 'update "SegmentsFinals" s set fraction = n.fraction from NecessaryPoints_'+Fitxer+' n where n.edge_id = '+str(edge)+' and s.edge ='+str(edge)+' and s."ordreTram" = 1 and s.routeid = '+str(ruta)+' and n.entitatid = 0;\n'
-                else:
-                    update += 'update "SegmentsFinals" s set fraction = n.fraction from NecessaryPoints_'+Fitxer+' n where n.edge_id = '+str(edge)+' and s.edge ='+str(edge)+' and s."ordreTram" = 2 and s.routeid = '+str(ruta)+' and n.pid = '+str(ruta+1)+';\n'
-    
-            try:
-                cur.execute(update)
-                conn.commit()
-            except:
-                print ("UPDATE TABLE SegmentsFinals ERROR")
-                
-            '''
-            #    6.3 Query per escollir i afegir el tros de tram que correspon a cada inici i final 
-            #    Posteriorment es fa un UPDATE del camp de geometria de la taula 'SegmentsFinals' amb els trams ja retallats
-            '''
-            select = 'select * from "SegmentsFinals" order by routeid;'
-            try:
-                cur.execute(select)
-                vec = cur.fetchall()
-                conn.commit()
-            except:
-                print ("SELECT SegmentsFinals ERROR")
-            updateSegment = ''
-            for x in range(len(vec)):
-                ordre = vec[x][4]
-                fraction = vec[x][3]
-                edgeAnt = vec[x][2]
-                edge = vec[x][1]
-                selectTouch = 'SELECT ST_Touches((select ST_Line_Substring("Xarxa_Prova"."the_geom",0,'+str(fraction)+') as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select the_geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
-                try:
-                    cur.execute(selectTouch)
-                    resposta = cur.fetchall()
-                    conn.commit()
-                except:
-                    print ("SELECT TOUCH ERROR")
-                if edgeAnt != -1:   
-                    if resposta[0][0]:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",0,'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
-                    else:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
-                else:
-                    if ordre == 1:
-                        fractForward = vec[x+1][3]
-                    else:
-                        fractForward = vec[x-1][3]
-                    if fraction >= fractForward:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
-                    else:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
-                            
-    
-            try:
-                cur.execute(updateSegment)
-                conn.commit()
-            except:
-                print ("UPDATE TABLE SegmentsFinals Geometries ERROR")
-            
-            '''
-            #    7. S'afegeix i s'actualitza el camp de geometria a la taula resultat
-            '''
-            alter = 'ALTER TABLE "Resultat" ADD COLUMN newEdge geometry;\n'
-            alter += 'update "Resultat" r set newedge = s.the_geom from "Xarxa_Prova" s where s.id = r.edge;'
-    
-            try:
-                cur.execute(alter)
-                conn.commit()
-            except:
-                print ("ALTER and UPDATE TABLE Resultat Geometries ERROR")
-    
-            '''
-            #    8. UPDATE per actualitzar els trams retallats a la taula 'Resultat'
-            '''
-            update = 'update "Resultat" r set newedge = s."cutEdge" from "SegmentsFinals" s where s."routeid" = r.routeid and s.edge = r.edge;'
-            try:
-                cur.execute(update)
-                conn.commit()
-            except:
-                print ("ALTER and UPDATE TABLE Resultat Geometries ERROR")
-    
-            
-            '''
-            #    9. Seleccio dels N-camins més proxims al domicili indicat per tal de presentar els resultats
-            #    en el quadre de la interficie del modul
-            '''
-            limit = self.getLimit()
-            select = 'select e."'+ nomCamp[0][0] +'" as NomEntitat, r.agg_cost as Cost, r.entitatID from "Resultat" r  join "' + self.dlg.comboCapaDesti.currentText() + '" e on r.entitatID = e.id where  r.edge = -1 order by 2 asc limit ' + str(limit) + ';'
-            try:
-                cur.execute(select)
-                vec = cur.fetchall()
-                conn.commit()
-            except:
-                print ("SELECT resultats ERROR")
-                
-            '''
-            #    10. Drop i Create d'una sentencia SQL per obtenir els trams junts per a cada camí optim escollit
-            #     i al mateix temps, s'afegeix la informació obtinguda en el select anterior.
-            '''
-            createTrams = 'drop table if exists "TramsNous_'+Fitxer+'";\n'
-            createTrams += 'create table "TramsNous_'+Fitxer+'" as select * from (\n' 
-            rowCount = self.dlg.taulaResultat.rowCount()
-            self.dlg.taulaResultat.setColumnCount(2)
-            self.dlg.taulaResultat.setHorizontalHeaderLabels(['Entitat', lbl_Cost])
-            if self.dlg.comboCost.currentText() == 'Distancia':
-                rnd = 0
-            else:
-                rnd = 1
-            for x in range (rowCount,len(vec)):
-                self.dlg.taulaResultat.insertRow(x)
-                self.dlg.taulaResultat.setItem(x, 0, QTableWidgetItem(str(vec[x][0])))
-                self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(vec[x][1],rnd))))
-                if x < len(vec) and x >= 1:
-                    createTrams += 'UNION\n'
-                    
-                createTrams += 'select entitatid, \'' + str(vec[x][0].replace("'","''")) +'\' as "NomEntitatDesti" ,'+str(round(vec[x][1]))+' as agg_cost, ST_Union(newedge) as the_geom from "Resultat" where entitatid = '+str(vec[x][2])+' group by entitatid\n'
-            
-            createTrams += ")total order by agg_cost asc;"
-            QApplication.processEvents()
-            
-            '''
-            #    10.1 Execució de la sentencia SQL per crear la taula amb els trams
-            '''
-            try:
-                cur.execute(createTrams)
-                conn.commit()
-            except:
-                print ("create trams ERROR")
-                
-            '''
-            #    11. Presentació per pantalla dels diferents camins
-            #    Primer es fa la connexio amb el servei per poder presentar les dades a pantalla
-            '''            
-            uri = QgsDataSourceUri()
-            try:
-                uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
-            except:
-                print ("Error a la connexio")
-            
-            '''
-            #   11.1 Es fa la selecció de les dades que es volen presentar
-            '''
-            sql_total = 'select row_number() OVER() AS "id",* from "TramsNous_'+Fitxer+'"'
-            QApplication.processEvents()
-            uri.setDataSource("","("+sql_total+")","the_geom","","entitatid")
-            QApplication.processEvents()
-            
-            try:
-                cur.execute(sql_total)
-                resultat = cur.fetchall()
-            except:
-                "Error SELECT CAMP NOM etiquetes"
-            
-            '''
-            #    11.2 Es prepara el titol de la capa que apareixerà a la llegenda
-            '''
-            titol=self.dlg.comboCapaDesti.currentText()
-            titol2='Camins més propers a '
-            titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-            vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
-            QApplication.processEvents()
-            '''
-            #   11.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-            '''
-            if vlayer.isValid():
-                Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                """Es carrega el Shape a l'entorn del QGIS"""
-                vlayer = QgsVectorLayer(os.environ['TMP']+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-    
-                symbols = vlayer.renderer().symbols(QgsRenderContext())
-                symbol=symbols[0]
-                
-                '''Es prepara cada camí de la capa amb diferent color i gruix en funcio de la distància a la que estigui de l'origen '''
-                GradSymMin = 0
-                GradSymMax = limit
-                GradSymNoOfClasses = limit
-                GradSymInterval = round(((int(GradSymMax) - int(GradSymMin)) / float(GradSymNoOfClasses)),0)
-                myRangeList = []
-                gruix = 2.5
-                interval = float(gruix/limit)
-                
-                
-                for x in range (GradSymNoOfClasses):
-                    if x == 0:
-                        min = 0
-                        max = 1
-                        color = QColor(0, 255, 255*x/GradSymNoOfClasses)
-                    elif x == (GradSymNoOfClasses - 1):
-                        min = GradSymMax-1
-                        max = GradSymMax
-                        color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
-                    else:
-                        min = int(GradSymMin)+(GradSymInterval*x)+0.001
-                        max = int(GradSymMin)+GradSymInterval*(x+1)
-                        color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
-                    
-                    label = str(resultat[x][0]) + ". " +str(resultat[x][2])                    
-                    symbol=QgsLineSymbol()
-    
-                    registry = QgsSymbolLayerRegistry()
-                    lineMeta = registry.symbolLayerMetadata("SimpleLine")
-                    #Line layer
-                    lineLayer = lineMeta.createSymbolLayer({'width': '1', 'color': '255,0,0', 'offset': '0', 'penstyle': 'solid', 'use_custom_dash': '0', 'joinstyle': 'bevel', 'capstyle': 'round'})
-    
-                    symbol.deleteSymbolLayer(0)
-                    symbol.appendSymbolLayer(lineLayer)
-    
-                    symbol.setWidth(gruix)
-                    symbol.setColor(color)                
-                    
-                    ranger = QgsRendererRange(min, max, symbol, label)
-                    myRangeList.append(ranger)
-                    gruix -= float(interval)
-    
-                '''Es renderitzen els estils de cada cami'''
-                fieldname="id"
-                format = QgsRendererRangeLabelFormat()
-                
-                '''S'apliquen els estils a la capa'''
-                renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
-                renderer.setLabelFormat(format,True)
-                vlayer.setRenderer(renderer)
-                QApplication.processEvents()
-    
-                
-                QgsProject.instance().addMapLayer(vlayer,False)
-                root = QgsProject.instance().layerTreeRoot()
-                myLayerNode=QgsLayerTreeLayer(vlayer)
-                root.insertChildNode(0,myLayerNode)
-                myLayerNode.setCustomProperty("showFeatureCount", False)
-                QApplication.processEvents()
-                iface.mapCanvas().refresh()
-                ''''S'afegeix la capa a la pantalla'''
-                #iface.legendInterface().refreshLayerSymbology(vlayer)
-            else:
-                QMessageBox.information(None, "LAYER ERROR 1:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
-                
-            '''
-            #    12. S'afegeixen els punts de destí a pantalla amb les corresponents etiquetes amb els seus noms
-            #    12.1 Es seleccionen les dades que es vol mostrar
-            '''
-            sql_total = 'select row_number() OVER(order by t."agg_cost") AS "id",n.entitatid, n.the_geom, t."NomEntitatDesti" as "NomEntitat" from "TramsNous_'+Fitxer+'" t join NecessaryPoints_'+Fitxer+' n on n.entitatid = t.entitatid order by t."agg_cost" ASC'
-            QApplication.processEvents()
-            uri.setDataSource("","("+sql_total+")","the_geom","","id")
-            QApplication.processEvents()
-    
-            '''
-            #    12.2 Es prepara el titol de la capa que apareixerà a la llegenda
-            '''
-            titol=self.dlg.comboCapaDesti.currentText()
-            titol2='Entitats de destí '
-            titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-            vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
-            QApplication.processEvents()
-            '''
-            #    12.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-            '''
-            if vlayer.isValid():
-                Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
-                """Es carrega el Shape a l'entorn del QGIS"""
-                vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-                #vlayer.setLayerTransparency(50)
-                symbols = vlayer.renderer().symbols(QgsRenderContext())
-                symbol=symbols[0]
-                symbol.setColor(QColor.fromRgb(250,50,250))
-                '''S'afegeixen totes les propietats a la capa: color, tipus de font de l'etiqueta, colocacio, nom del camp a mostrar, etc'''
-    
-                layer_settings  = QgsPalLayerSettings()
-                text_format = QgsTextFormat()
-                
-                text_format.setFont(QFont("Arial", 16))
-                text_format.setSize(16)
-                
-                buffer_settings = QgsTextBufferSettings()
-                buffer_settings.setEnabled(True)
-                buffer_settings.setSize(1)
-                buffer_settings.setColor(QColor("white"))
-                
-                text_format.setBuffer(buffer_settings)
-                layer_settings.setFormat(text_format)
-                
-                layer_settings.isExpression = True
-                layer_settings.fieldName = "concat( id,'. ',NomEntitat)"
-                layer_settings.placement = 2
-                layer_settings.scaleVisibility = True
-                layer_settings.minimumScale = 20000
-                layer_settings.maximumScale = 3000
-                
-                layer_settings.enabled = True
-                
-                layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-                vlayer.setLabelsEnabled(True)
-                vlayer.setLabeling(layer_settings)
-                vlayer.triggerRepaint()
-                QApplication.processEvents()
-                QgsProject.instance().addMapLayer(vlayer,False)
-                root = QgsProject.instance().layerTreeRoot()
-                myLayerNode=QgsLayerTreeLayer(vlayer)
-                root.insertChildNode(0,myLayerNode)
-                myLayerNode.setCustomProperty("showFeatureCount", False)
-                QApplication.processEvents()
-                ''''S'afegeix la capa a la pantalla'''
-                iface.mapCanvas().refresh()
-                #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
-            else:
-                QMessageBox.information(None, "LAYER ERROR 2:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
-                
-            '''
-            #    13. S'afegeix el punt d'origen a pantalla
-            #    13.1 Es selecciona la dada que es vol mostrar
-            '''
-            sql_total = 'select pid, the_geom from NecessaryPoints_'+Fitxer+' where pid = 1'
-            QApplication.processEvents()
-            uri.setDataSource("","("+sql_total+")","the_geom","","pid")
-            QApplication.processEvents()
-            
-            '''
-            #    13.2 Es prepara el titol de la capa que apareixerà a la llegenda
-            '''
-            titol=self.dlg.lbl_numpol.text()
-            titol2='Entitat d\'origen: '
-            titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-            vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
-            QApplication.processEvents()
-            '''
-            #    13.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-            '''
-            if vlayer.isValid():
-                Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                """Es carrega el Shape a l'entorn del QGIS"""
-                vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-                symbols = vlayer.renderer().symbols(QgsRenderContext())
-                symbol=symbols[0]
-                '''S'afegeix el color a la nova entitat'''
-                symbol.setColor(QColor.fromRgb(50,250,250))
-                QgsProject.instance().addMapLayer(vlayer,False)
-                root = QgsProject.instance().layerTreeRoot()
-                myLayerNode=QgsLayerTreeLayer(vlayer)
-                root.insertChildNode(0,myLayerNode)
-                myLayerNode.setCustomProperty("showFeatureCount", False)
-                QApplication.processEvents()
-                ''''S'afegeix la capa a la pantalla'''
-                iface.mapCanvas().refresh()
-                #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
-            else:
-                QMessageBox.information(None, "LAYER ERROR 3:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
-            
-            '''
-            #    14. S'esborren les taules utilitzades durant el càlcul
-            '''
-    
-            drop = 'DROP TABLE IF EXISTS "Xarxa_Prova";\n'
-            drop += 'DROP TABLE IF EXISTS "Resultat";\n'
-            drop += 'DROP TABLE IF EXISTS checkNum;\n'
-            drop += 'DROP TABLE IF EXISTS "TramsNous_'+Fitxer+'";\n'
-            drop += 'DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';\n'
-            drop += 'DROP TABLE IF EXISTS "SegmentsFinals";\n'
-            
-            try:
-                cur.execute(drop)
-                conn.commit()
-            except:
-                print ("Error DROP final")
-    
-            '''
+            self.server(CNB)
+        '''
         #    15. Es posa la barra informativa inferior a connectat
         '''
         self.barraEstat_connectat()
         print ("Durada: "+str(int(time.time()-a))+" s.")
+        
+    def local(self,CNB):
+        uri = QgsDataSourceUri()
+        try:
+            uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
+        except Exception as ex:
+            print ("Error a la connexio")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error a la connexio")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        QApplication.processEvents()
+        sql_punts = 'SELECT * FROM \"' + self.dlg.comboCapaDesti.currentText() + '\"'
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_punts+")","geom","","id")
+        QApplication.processEvents()
+        end_lyr = QgsVectorLayer(uri.uri(False), "fin", "postgres")
+        QApplication.processEvents()
+        
+        sql_punt = 'SELECT * FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_punt+")","geom","","id")
+        QApplication.processEvents()
+        start_lyr = QgsVectorLayer(uri.uri(False), "inici", "postgres")
+        QApplication.processEvents()
+        
+        sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+        cur.execute(sql_inici)
+        coordenadas = cur.fetchall()
+        start_point = ((str(coordenadas[0]))[1:-1])
+        
+        sql_xarxa="SELECT * FROM \"SegmentsXarxaCarrers\""
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_xarxa+")","the_geom","","id")
+        QApplication.processEvents()
+        network_lyr = QgsVectorLayer(uri.uri(False), "xarxa", "postgres")
+        QApplication.processEvents()
+        
+        resultado = self.calculo_Local(network_lyr,CNB,uri,start_point,end_lyr)
+        
+        
+        '''Borrar tramos sobrantes'''
+        features = resultado['OUTPUT'].getFeatures(QgsFeatureRequest().addOrderBy('cost',True))
+        limit = self.getLimit()
+        
+        resultado['OUTPUT'].startEditing()
+        fields = resultado['OUTPUT'].fields()
+        for x in range(len(fields)):
+            if('Nom' in fields[x].displayName()):
+                resultado['OUTPUT'].renameAttribute(x,'NomEntitat')
+            elif(fields[x].displayName()=='id'):
+                resultado['OUTPUT'].renameAttribute(x,'entitatid')
+            elif(fields[x].displayName()=='cost'):
+                resultado['OUTPUT'].renameAttribute(x,'agg_cost') 
+        resultado['OUTPUT'].addAttribute(QgsField('ordre', QVariant.Int))
+        
+        resultado['OUTPUT'].commitChanges()
+        
+        
+        resultado['OUTPUT'].startEditing()
+        featureOrdreList = [] #Variable usada para después poder nombrar fácilmente las etiquetas
+        x=0
+        for feature in features:
+            if(x>=limit):
+                resultado['OUTPUT'].deleteFeature(feature.id())
+            else:
+                self.getIndexOrdre(resultado['OUTPUT'])
+                resultado['OUTPUT'].changeAttributeValue(feature.id(),self.getIndexOrdre(resultado['OUTPUT']),x+1)
+                featureOrdreList.append(feature.id())
+            x = x+1
+        resultado['OUTPUT'].commitChanges()
+  
+  
+        '''Borrar puntos sobrantes'''
+        puntos_destino = self.save_vlayer(end_lyr) 
+        puntos_destino['OUTPUT'].startEditing()
+        fields = puntos_destino['OUTPUT'].fields()
+        for x in range(len(fields)):
+            if('Nom' in fields[x].displayName()):
+                puntos_destino['OUTPUT'].renameAttribute(x,'NomEntitat')
+            elif(fields[x].displayName()=='id'):
+                puntos_destino['OUTPUT'].renameAttribute(x,'entitatid')
+                            
+        puntos_destino['OUTPUT'].addAttribute(QgsField('ordre', QVariant.Int))
+        puntos_destino['OUTPUT'].commitChanges()
+        
+        
+        features = puntos_destino['OUTPUT'].getFeatures()
+        puntos_destino['OUTPUT'].startEditing()
+        for feature in features: 
+            if(self.featureNotInResult(feature,resultado['OUTPUT'])):
+                puntos_destino['OUTPUT'].deleteFeature(feature.id())
+            else:
+                puntos_destino['OUTPUT'].changeAttributeValue(feature.id(),self.getIndexOrdre(puntos_destino['OUTPUT']),self.compareToGetOrdre(feature,resultado['OUTPUT']))
+        puntos_destino['OUTPUT'].commitChanges()
+        
+        
+        '''Borrar atributos sobrantes del resultado'''
+        resultado['OUTPUT'].startEditing()
+        indexAttributesToDelete = []
+        for x in range(len(resultado['OUTPUT'].attributeList())):
+            if(resultado['OUTPUT'].attributeDisplayName(x)!='ordre' and resultado['OUTPUT'].attributeDisplayName(x)!='entitatid' and resultado['OUTPUT'].attributeDisplayName(x)!='NomEntitat' and resultado['OUTPUT'].attributeDisplayName(x)!='agg_cost'):
+                indexAttributesToDelete.append(x)
+        resultado['OUTPUT'].deleteAttributes(indexAttributesToDelete)
+        resultado['OUTPUT'].commitChanges()
+
+        
+        '''Borrar atributos sobrantes de los destinos'''
+        puntos_destino['OUTPUT'].startEditing()
+        indexAttributesToDelete.clear()
+        for x in range(len(puntos_destino['OUTPUT'].attributeList())):
+            if(puntos_destino['OUTPUT'].attributeDisplayName(x)!='ordre' and puntos_destino['OUTPUT'].attributeDisplayName(x)!='entitatid' and puntos_destino['OUTPUT'].attributeDisplayName(x)!='NomEntitat'):
+                indexAttributesToDelete.append(x)
+        puntos_destino['OUTPUT'].deleteAttributes(indexAttributesToDelete)
+        puntos_destino['OUTPUT'].commitChanges()
+        
+        
+        '''Representación en taulaResultat'''
+        rowCount = self.dlg.taulaResultat.rowCount()
+        self.dlg.taulaResultat.setColumnCount(2)
+        self.dlg.taulaResultat.setHorizontalHeaderLabels(['Entitat', lbl_Cost])
+        for x in range (rowCount,limit):
+            self.dlg.taulaResultat.insertRow(x)
+            feature = resultado['OUTPUT'].getFeature(featureOrdreList[x])
+            self.dlg.taulaResultat.setItem(x, 0, QTableWidgetItem(str(feature['NomEntitat'])))
+            self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(feature['agg_cost']))))
+
+      
+        '''Representación caminos de destino'''
+        titol=self.dlg.comboCapaDesti.currentText()
+        titol2='Camins més propers a '
+        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        #vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
+        #vlayer = QgsVectorLayer(resultado['OUTPUT'].source(), titol3.decode('utf8'), resultado['OUTPUT'].providerType())
+        vlayer = resultado['OUTPUT']
+        vlayer.setName(titol3.decode('utf8'))
+        QApplication.processEvents()
+        
+        if(vlayer.isValid):
+            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
+            #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            """Es carrega el Shape a l'entorn del QGIS"""
+            #vlayer = QgsVectorLayer(os.environ['TMP']+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            
+            '''Es prepara cada camí de la capa amb diferent color i gruix en funcio de la distància a la que estigui de l'origen '''
+            GradSymMin = 0
+            GradSymMax = limit
+            GradSymNoOfClasses = limit
+            #GradSymInterval = round(((int(GradSymMax) - int(GradSymMin)) / float(GradSymNoOfClasses)),0)
+            GradSymInterval = 1.0
+            myRangeList = []
+            gruix = 2.5
+            interval = float(gruix/limit)
+            
+            
+            for x in range (GradSymNoOfClasses):
+                if x == 0:
+                    min = 0
+                    max = 1
+                    color = QColor(0, 255, 255*x/GradSymNoOfClasses)
+                elif x == (GradSymNoOfClasses - 1):
+                    min = GradSymMax-1
+                    max = GradSymMax
+                    color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
+                else:
+                    min = int(GradSymMin)+(GradSymInterval*x)+0.001
+                    max = int(GradSymMin)+GradSymInterval*(x+1)
+                    color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
+                
+                feature = resultado['OUTPUT'].getFeature(featureOrdreList[x])
+                label = str(feature['ordre']) + ". " +str(feature['NomEntitat'])                    
+                symbol=QgsLineSymbol()
+
+                registry = QgsSymbolLayerRegistry()
+                lineMeta = registry.symbolLayerMetadata("SimpleLine")
+                #Line layer
+                lineLayer = lineMeta.createSymbolLayer({'width': '1', 'color': '255,0,0', 'offset': '0', 'penstyle': 'solid', 'use_custom_dash': '0', 'joinstyle': 'bevel', 'capstyle': 'round'})
+
+                symbol.deleteSymbolLayer(0)
+                symbol.appendSymbolLayer(lineLayer)
+
+                symbol.setWidth(gruix)
+                symbol.setColor(color)                          
+                
+                ranger = QgsRendererRange(min, max, symbol, label)
+                myRangeList.append(ranger)
+                gruix -= float(interval)
+
+            '''Es renderitzen els estils de cada cami'''
+            fieldname='ordre'
+            format = QgsRendererRangeLabelFormat()
+            
+            '''S'apliquen els estils a la capa'''
+            renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
+            renderer.setLabelFormat(format,True)
+            
+            renderer.setOrderByEnabled(True)
+            listOrder = []
+            listOrder.append(QgsFeatureRequest().OrderByClause("ordre",True))
+            renderer.setOrderBy(QgsFeatureRequest().OrderBy(listOrder))
+            
+        
+            vlayer.setRenderer(renderer)
+            QApplication.processEvents()
+
+            
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            iface.mapCanvas().refresh()
+            ''''S'afegeix la capa a la pantalla'''
+            #iface.legendInterface().refreshLayerSymbology(vlayer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 1:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+    
+        '''
+         # S'afegeixen els punts de destí a pantalla amb les corresponents etiquetes amb els seus noms
+        
+        # Es prepara el titol de la capa que apareixerà a la llegenda
+        '''
+        titol=self.dlg.comboCapaDesti.currentText()
+        titol2='Entitats de destí '
+        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = puntos_destino['OUTPUT']
+        QApplication.processEvents()
+        '''
+        #  Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
+        '''
+        if vlayer.isValid():
+            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
+            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
+            """Es carrega el Shape a l'entorn del QGIS"""
+            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            #vlayer.setLayerTransparency(50)
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            symbol.setColor(QColor.fromRgb(250,50,250))
+            '''S'afegeixen totes les propietats a la capa: color, tipus de font de l'etiqueta, colocacio, nom del camp a mostrar, etc'''
+
+            layer_settings  = QgsPalLayerSettings()
+            text_format = QgsTextFormat()
+            
+            text_format.setFont(QFont("Arial", 16))
+            text_format.setSize(16)
+            
+            buffer_settings = QgsTextBufferSettings()
+            buffer_settings.setEnabled(True)
+            buffer_settings.setSize(1)
+            buffer_settings.setColor(QColor("white"))
+            
+            text_format.setBuffer(buffer_settings)
+            layer_settings.setFormat(text_format)
+            
+            layer_settings.isExpression = True
+            layer_settings.fieldName = "concat( ordre,'. ',NomEntitat)"
+            layer_settings.placement = 2
+            layer_settings.scaleVisibility = True
+            layer_settings.minimumScale = 20000
+            layer_settings.maximumScale = 3000
+            
+            layer_settings.enabled = True
+            
+            layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+            vlayer.setLabelsEnabled(True)
+            vlayer.setLabeling(layer_settings)
+            vlayer.triggerRepaint()
+            QApplication.processEvents()
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            ''''S'afegeix la capa a la pantalla'''
+            iface.mapCanvas().refresh()
+            #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 2:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+            
+        '''
+        #  S'afegeix el punt d'origen a pantalla
+        
+        # Es prepara el titol de la capa que apareixerà a la llegenda
+        '''
+        titol=self.dlg.lbl_numpol.text()
+        titol2='Entitat d\'origen: '
+        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = start_lyr
+        QApplication.processEvents()
+        '''
+        # Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
+        '''
+        if vlayer.isValid():
+            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
+            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            """Es carrega el Shape a l'entorn del QGIS"""
+            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            '''S'afegeix el color a la nova entitat'''
+            symbol.setColor(QColor.fromRgb(50,250,250))
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            ''''S'afegeix la capa a la pantalla'''
+            iface.mapCanvas().refresh()
+            #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 3:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+                   
+                   
+                    
+    def server(self, CNB):
+        '''Cálculo en el servidor'''
+        '''
+        #==============================================
+        #    4. S'ajunten tots els punts tan de sortida com de destí en una sola taula per preparar-los per la
+        #    funció del PGRounting pgr_withPointsKSP: dintreilla + punts de la capa de destí
+        #    4.1 S'esborra i es crea una nova taula
+        # ==============================================
+        '''
+        drop = 'DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';'
+        try:
+            cur.execute(drop)
+            conn.commit()
+        except Exception as ex:
+            print ("Error DROP TABLE 1")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error DROP TABLE 1")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+        create = 'CREATE TABLE NecessaryPoints_'+Fitxer+' (\n'
+        create += "\tpid    serial primary key,\n"
+        create += "\tthe_geom geometry,\n"
+        create += "\tentitatID int8,\n"
+        create += "\tedge_id BIGINT,\n"
+        create += "\tfraction FLOAT,\n"
+        create += "\tnewPoint geometry);"
+        try:
+            cur.execute(create)
+            conn.commit()
+        except Exception as ex:
+            print ("Error CREATE NecessaryPoints")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error CREATE NecessaryPoints")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+            
+        '''
+        #    4.2 S'afegeixen els punts necessaris a la taula
+        '''            
+        insert = 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID,the_geom) (SELECT 0, ST_Centroid("geom") the_geom from "dintreilla" where "Carrer_Num_Bis" = \''+CNB+'\');\n'
+        insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, the_geom) (SELECT "id", ST_Centroid("geom") the_geom from "' + self.dlg.comboCapaDesti.currentText() + '" order by "id");'
+        try:
+            cur.execute(insert)
+            conn.commit()
+        except Exception as ex:
+            print ("Error INSERT NecessaryPoints")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error INSERT NecessaryPoints")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+        '''
+        #    4.3 S'afegeix el id del tram al que estan més pròxims els punts, els punts projectats sobre el graf 
+        #    i la fracció de segment a on estant 
+        '''
+        update = 'UPDATE NecessaryPoints_'+Fitxer+' set "edge_id"=tram_proper."tram_id" from (SELECT distinct on(Poi."pid") Poi."pid" As Punt_id,Sg."id" as Tram_id, ST_Distance(Sg."the_geom",Poi."the_geom")  as dist FROM "Xarxa_Prova" as Sg,NecessaryPoints_'+Fitxer+' AS Poi ORDER BY  Poi."pid",ST_Distance(Sg."the_geom",Poi."the_geom"),Sg."id") tram_proper where NecessaryPoints_'+Fitxer+'."pid"=tram_proper."punt_id";\n'
+        update += 'UPDATE NecessaryPoints_'+Fitxer+' SET fraction = ST_LineLocatePoint(e.the_geom, NecessaryPoints_'+Fitxer+'.the_geom),newPoint = ST_LineInterpolatePoint(e."the_geom", ST_LineLocatePoint(e."the_geom", NecessaryPoints_'+Fitxer+'."the_geom")) FROM "Xarxa_Prova" AS e WHERE NecessaryPoints_'+Fitxer+'."edge_id" = e."id";\n'
+        try:
+            cur.execute(update)
+            conn.commit()
+        except Exception as ex:
+            print ("Error UPDATE NecessaryPoints")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error UPDATE NecessaryPoints")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+            
+        '''
+        #    4.4 Es fa una consulta per poder generar una sentencia SQL que faci la cerca de
+        #    tots els camins més curts a tots el punts necessaris
+        '''
+        select = 'select * from NecessaryPoints_'+Fitxer+' order by pid'
+        cur.execute(select)
+        vec = cur.fetchall() 
+        create = 'create local temp table "Resultat" as SELECT * FROM (\n'
+        for x in range (0,len(vec)):
+            if x < len(vec) and x >= 2:
+                create += 'UNION\n'
+            if x != 0:
+                if vec[x][4] == 1.0 or vec[x][4] == 0.0:
+                    create += 'select '+ str(x) +' as routeID,'+ str(vec[x][2]) +' as entitatID, * from pgr_withPointsKSP(\'SELECT id, source, target, cost, reverse_cost FROM "Xarxa_Prova" ORDER BY id\',\'SELECT pid, edge_id, fraction from NecessaryPoints_'+Fitxer+'\',-1,' + str(vec[x][2])+',1)\n'
+                else:
+                    create += 'select '+ str(x) +' as routeID,'+ str(vec[x][2]) +' as entitatID, * from pgr_withPointsKSP(\'SELECT id, source, target, cost, reverse_cost FROM "Xarxa_Prova" ORDER BY id\',\'SELECT pid, edge_id, fraction from NecessaryPoints_'+Fitxer+'\',-1,-' + str(vec[x][0]) +',1)\n'
+        create += ')QW ORDER BY routeID, seq;'
+        
+        '''
+        #    4.5 Selecció del nom del camp on figura el Nom de l'entitat de destí
+        '''
+        try:
+            select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'Nom%';"
+            cur.execute(select)
+            nomCamp = cur.fetchall()
+        except Exception as ex:
+            print ("Error SELECT CAMP NOM")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error SELECT CAMP NOM")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+            
+        '''
+        #    5. Destrucció i creació de la taula on figuren tots els camins possibles
+        '''
+        drop = 'DROP TABLE IF EXISTS "Resultat";'
+        try:
+            cur.execute(drop)
+            conn.commit()
+        except Exception as ex:
+            print ("Error DROP TABLE 2")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error DROP TABLE 2")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+        try:
+            cur.execute(create)
+            conn.commit()
+        except Exception as ex:
+            print ("Error CREATE Resultat")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error CREATE Resultat")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+        '''
+        #    6. Destrucció i creació de la taula "Segments finals" on figuren tots els camins possibles que són prinicipi i/o final
+        '''
+
+        drop = "DROP TABLE IF EXISTS \"SegmentsFinals\";"
+        try:
+            cur.execute(drop)
+            conn.commit()
+        except:
+            print ("DROP TABLE ERROR 1")
+        
+        create = "CREATE local temp TABLE \"SegmentsFinals\" (\n"
+        create += "\trouteid int8,\n"
+        create += "\tedge int8,\n"
+        create += "\t\"edgeAnt\" int8,\n"
+        create += "\tfraction FLOAT,\n"
+        create += "\t\"ordreTram\" int8,\n"
+        create += "\t\"cutEdge\" geometry);"
+        try:
+            cur.execute(create)
+            conn.commit()
+        except Exception as ex:
+            print ("Error CREATE SegmentsFinals")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error CREATE SegmentsFinals")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+            
+        '''
+        #    6.1 Query per seleccionar els segments que són inici i final
+        '''
+        select = 'select routeid, node, edge from "Resultat" order by routeid, path_seq;'
+        try:
+            cur.execute(select)
+            vec = cur.fetchall()
+            conn.commit()            
+        except Exception as ex:
+            print ("Error CREATE Resultat")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error CREATE Resultat")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+            
+        insert = ''
+        for x in range (len(vec)):
+            if vec[x][1] < 0:
+                if vec[x][1] != -1:
+                    insert += 'INSERT INTO "SegmentsFinals" (routeid, edge, "edgeAnt", "ordreTram") VALUES (' + str(vec[x][0]) + ', ' + str(vec[x-1][2]) + ', ' + str(vec[x-2][2]) + ', ' + str(2) +');\n'
+                else:
+                    insert += 'INSERT INTO "SegmentsFinals" (routeid, edge, "edgeAnt", "ordreTram") VALUES (' + str(vec[x][0]) + ', ' + str(vec[x][2]) + ', ' + str(vec[x+1][2]) + ', ' + str(1) + ');\n'
+        try:
+            cur.execute(insert)
+            conn.commit()            
+        except Exception as ex:
+            print ("Error INSERT SegmentsFinals")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error INSERT SegmentsFinals")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+            
+        '''
+        #    6.2 UPDATE per poder afegir la fracció en què es troba el punt sobre el segment
+        '''
+        select = 'select routeid, edge, "ordreTram" from "SegmentsFinals" order by routeid, "ordreTram";'
+        try:
+            cur.execute(select)
+            vec = cur.fetchall()
+            conn.commit()
+        except Exception as ex:
+            print ("Error SELECT SegmentsFinals")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error SELECT SegmentsFinals")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+
+        update = ''
+        for x in range(len(vec)):
+            ruta = vec[x][0]
+            edge = vec[x][1]
+            ordre = vec[x][2]
+            if ordre == 1:
+                update += 'update "SegmentsFinals" s set fraction = n.fraction from NecessaryPoints_'+Fitxer+' n where n.edge_id = '+str(edge)+' and s.edge ='+str(edge)+' and s."ordreTram" = 1 and s.routeid = '+str(ruta)+' and n.entitatid = 0;\n'
+            else:
+                update += 'update "SegmentsFinals" s set fraction = n.fraction from NecessaryPoints_'+Fitxer+' n where n.edge_id = '+str(edge)+' and s.edge ='+str(edge)+' and s."ordreTram" = 2 and s.routeid = '+str(ruta)+' and n.pid = '+str(ruta+1)+';\n'
+
+        try:
+            cur.execute(update)
+            conn.commit()            
+        except Exception as ex:
+            print ("Error UPDATE SegmentsFinals")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error UPDATE SegmentsFinals")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        '''
+        #    6.3 Query per escollir i afegir el tros de tram que correspon a cada inici i final 
+        #    Posteriorment es fa un UPDATE del camp de geometria de la taula 'SegmentsFinals' amb els trams ja retallats
+        '''
+        select = 'select * from "SegmentsFinals" order by routeid;'
+        try:
+            cur.execute(select)
+            vec = cur.fetchall()
+            conn.commit()
+        except Exception as ex:
+            print ("Error SELECT SegmentsFinals")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error SELECT SegmentsFinals")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        updateSegment = ''
+        for x in range(len(vec)):
+            ordre = vec[x][4]
+            fraction = vec[x][3]
+            edgeAnt = vec[x][2]
+            edge = vec[x][1]
+            selectTouch = 'SELECT ST_Touches((select ST_Line_Substring("Xarxa_Prova"."the_geom",0,'+str(fraction)+') as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select the_geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
+            try:
+                cur.execute(selectTouch)
+                resposta = cur.fetchall()
+                conn.commit()
+            except Exception as ex:
+                print ("Error SELECT TOUCH")
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print (message)
+                QMessageBox.information(None, "Error", "Error SELECT TOUCH")
+                conn.rollback()
+                self.eliminaTaulesCalcul(Fitxer)
+                return
+            if edgeAnt != -1:   
+                if resposta[0][0]:
+                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",0,'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                else:
+                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+            else:
+                if ordre == 1:
+                    fractForward = vec[x+1][3]
+                else:
+                    fractForward = vec[x-1][3]
+                if fraction >= fractForward:
+                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                else:
+                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        
+
+        try:
+            cur.execute(updateSegment)
+            conn.commit()
+        except Exception as ex:
+            print ("Error UPDATE SegmentsFinals Geometries")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error UPDATE SegmentsFinals Geometries")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+        '''
+        #    7. S'afegeix i s'actualitza el camp de geometria a la taula resultat
+        '''
+        alter = 'ALTER TABLE "Resultat" ADD COLUMN newEdge geometry;\n'
+        alter += 'update "Resultat" r set newedge = s.the_geom from "Xarxa_Prova" s where s.id = r.edge;'
+
+        try:
+            cur.execute(alter)
+            conn.commit()
+        except Exception as ex:
+            print ("Error ALTER and UPDATE Resultat Geometries")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error ALTER and UPDATE Resultat Geometries")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+
+        '''
+        #    8. UPDATE per actualitzar els trams retallats a la taula 'Resultat'
+        '''
+        update = 'update "Resultat" r set newedge = s."cutEdge" from "SegmentsFinals" s where s."routeid" = r.routeid and s.edge = r.edge;'
+        try:
+            cur.execute(update)
+            conn.commit()
+        except Exception as ex:
+            print ("Error ALTER and UPDATE Resultat Geometries")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error ALTER and UPDATE Resultat Geometries")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+
+        
+        '''
+        #    9. Seleccio dels N-camins més proxims al domicili indicat per tal de presentar els resultats
+        #    en el quadre de la interficie del modul
+        '''
+        limit = self.getLimit()
+        select = 'select e."'+ nomCamp[0][0] +'" as NomEntitat, r.agg_cost as Cost, r.entitatID from "Resultat" r  join "' + self.dlg.comboCapaDesti.currentText() + '" e on r.entitatID = e.id where  r.edge = -1 order by 2 asc limit ' + str(limit) + ';'
+        try:
+            cur.execute(select)
+            vec = cur.fetchall()
+            conn.commit()
+        except Exception as ex:
+            print ("Error SELECT resultats")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error SELECT resultats")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+            
+        '''
+        #    10. Drop i Create d'una sentencia SQL per obtenir els trams junts per a cada camí optim escollit
+        #     i al mateix temps, s'afegeix la informació obtinguda en el select anterior.
+        '''
+        createTrams = 'drop table if exists "TramsNous_'+Fitxer+'";\n'
+        createTrams += 'create table "TramsNous_'+Fitxer+'" as select * from (\n' 
+        rowCount = self.dlg.taulaResultat.rowCount()
+        self.dlg.taulaResultat.setColumnCount(2)
+        self.dlg.taulaResultat.setHorizontalHeaderLabels(['Entitat', lbl_Cost])
+        if self.dlg.comboCost.currentText() == 'Distancia':
+            rnd = 0
+        else:
+            rnd = 1
+        for x in range (rowCount,len(vec)):
+            self.dlg.taulaResultat.insertRow(x)
+            self.dlg.taulaResultat.setItem(x, 0, QTableWidgetItem(str(vec[x][0])))
+            self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(vec[x][1],rnd))))
+            if x < len(vec) and x >= 1:
+                createTrams += 'UNION\n'
+                
+            createTrams += 'select entitatid, \'' + str(vec[x][0].replace("'","''")) +'\' as "NomEntitatDesti" ,'+str(round(vec[x][1]))+' as agg_cost, ST_Union(newedge) as the_geom from "Resultat" where entitatid = '+str(vec[x][2])+' group by entitatid\n'
+        
+        createTrams += ")total order by agg_cost asc;"
+        QApplication.processEvents()
+        
+        '''
+        #    10.1 Execució de la sentencia SQL per crear la taula amb els trams
+        '''
+        try:
+            cur.execute(createTrams)
+            conn.commit()
+        except Exception as ex:
+            print ("Error CREATE trams")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error CREATE trams")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+            
+        '''
+        #    11. Presentació per pantalla dels diferents camins
+        #    Primer es fa la connexio amb el servei per poder presentar les dades a pantalla
+        '''            
+        uri = QgsDataSourceUri()
+        try:
+            uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
+        except Exception as ex:
+            print ("Error a la connexio")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error a la connexio")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+        '''
+        #   11.1 Es fa la selecció de les dades que es volen presentar
+        '''
+        sql_total = 'select row_number() OVER() AS "id",* from "TramsNous_'+Fitxer+'"'
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_total+")","the_geom","","entitatid")
+        QApplication.processEvents()
+        
+        try:
+            cur.execute(sql_total)
+            resultat = cur.fetchall()
+        except Exception as ex:
+            print ("Error SELECT CAMP NOM Etiquetes")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error SELECT CAMP NOM Etiquetes")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
+        
+        '''
+        #    11.2 Es prepara el titol de la capa que apareixerà a la llegenda
+        '''
+        titol=self.dlg.comboCapaDesti.currentText()
+        titol2='Camins més propers a '
+        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
+        QApplication.processEvents()
+        '''
+        #   11.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
+        '''
+        if vlayer.isValid():
+            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
+            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            """Es carrega el Shape a l'entorn del QGIS"""
+            vlayer = QgsVectorLayer(os.environ['TMP']+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            
+            '''Es prepara cada camí de la capa amb diferent color i gruix en funcio de la distància a la que estigui de l'origen '''
+            GradSymMin = 0
+            GradSymMax = limit
+            GradSymNoOfClasses = limit
+            GradSymInterval = round(((int(GradSymMax) - int(GradSymMin)) / float(GradSymNoOfClasses)),0)
+            myRangeList = []
+            gruix = 2.5
+            interval = float(gruix/limit)
+            
+            
+            for x in range (GradSymNoOfClasses):
+                if x == 0:
+                    min = 0
+                    max = 1
+                    color = QColor(0, 255, 255*x/GradSymNoOfClasses)
+                elif x == (GradSymNoOfClasses - 1):
+                    min = GradSymMax-1
+                    max = GradSymMax
+                    color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
+                else:
+                    min = int(GradSymMin)+(GradSymInterval*x)+0.001
+                    max = int(GradSymMin)+GradSymInterval*(x+1)
+                    color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
+                
+                label = str(resultat[x][0]) + ". " +str(resultat[x][2])                    
+                symbol=QgsLineSymbol()
+
+                registry = QgsSymbolLayerRegistry()
+                lineMeta = registry.symbolLayerMetadata("SimpleLine")
+                #Line layer
+                lineLayer = lineMeta.createSymbolLayer({'width': '1', 'color': '255,0,0', 'offset': '0', 'penstyle': 'solid', 'use_custom_dash': '0', 'joinstyle': 'bevel', 'capstyle': 'round'})
+
+                symbol.deleteSymbolLayer(0)
+                symbol.appendSymbolLayer(lineLayer)
+
+                symbol.setWidth(gruix)
+                symbol.setColor(color)                
+                
+                ranger = QgsRendererRange(min, max, symbol, label)
+                myRangeList.append(ranger)
+                gruix -= float(interval)
+
+            '''Es renderitzen els estils de cada cami'''
+            fieldname="id"
+            format = QgsRendererRangeLabelFormat()
+            
+            '''S'apliquen els estils a la capa'''
+            renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
+            renderer.setLabelFormat(format,True)
+            vlayer.setRenderer(renderer)
+            QApplication.processEvents()
+
+            
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            iface.mapCanvas().refresh()
+            ''''S'afegeix la capa a la pantalla'''
+            #iface.legendInterface().refreshLayerSymbology(vlayer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 1:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+            
+        '''
+        #    12. S'afegeixen els punts de destí a pantalla amb les corresponents etiquetes amb els seus noms
+        #    12.1 Es seleccionen les dades que es vol mostrar
+        '''
+        sql_total = 'select row_number() OVER(order by t."agg_cost") AS "id",n.entitatid, n.the_geom, t."NomEntitatDesti" as "NomEntitat" from "TramsNous_'+Fitxer+'" t join NecessaryPoints_'+Fitxer+' n on n.entitatid = t.entitatid order by t."agg_cost" ASC'
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_total+")","the_geom","","id")
+        QApplication.processEvents()
+
+        '''
+        #    12.2 Es prepara el titol de la capa que apareixerà a la llegenda
+        '''
+        titol=self.dlg.comboCapaDesti.currentText()
+        titol2='Entitats de destí '
+        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
+        QApplication.processEvents()
+        '''
+        #    12.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
+        '''
+        if vlayer.isValid():
+            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
+            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
+            """Es carrega el Shape a l'entorn del QGIS"""
+            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            #vlayer.setLayerTransparency(50)
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            symbol.setColor(QColor.fromRgb(250,50,250))
+            '''S'afegeixen totes les propietats a la capa: color, tipus de font de l'etiqueta, colocacio, nom del camp a mostrar, etc'''
+
+            layer_settings  = QgsPalLayerSettings()
+            text_format = QgsTextFormat()
+            
+            text_format.setFont(QFont("Arial", 16))
+            text_format.setSize(16)
+            
+            buffer_settings = QgsTextBufferSettings()
+            buffer_settings.setEnabled(True)
+            buffer_settings.setSize(1)
+            buffer_settings.setColor(QColor("white"))
+            
+            text_format.setBuffer(buffer_settings)
+            layer_settings.setFormat(text_format)
+            
+            layer_settings.isExpression = True
+            layer_settings.fieldName = "concat( id,'. ',NomEntitat)"
+            layer_settings.placement = 2
+            layer_settings.scaleVisibility = True
+            layer_settings.minimumScale = 20000
+            layer_settings.maximumScale = 3000
+            
+            layer_settings.enabled = True
+            
+            layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+            vlayer.setLabelsEnabled(True)
+            vlayer.setLabeling(layer_settings)
+            vlayer.triggerRepaint()
+            QApplication.processEvents()
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            ''''S'afegeix la capa a la pantalla'''
+            iface.mapCanvas().refresh()
+            #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 2:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+            
+        '''
+        #    13. S'afegeix el punt d'origen a pantalla
+        #    13.1 Es selecciona la dada que es vol mostrar
+        '''
+        sql_total = 'select pid, the_geom from NecessaryPoints_'+Fitxer+' where pid = 1'
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_total+")","the_geom","","pid")
+        QApplication.processEvents()
+        
+        '''
+        #    13.2 Es prepara el titol de la capa que apareixerà a la llegenda
+        '''
+        titol=self.dlg.lbl_numpol.text()
+        titol2='Entitat d\'origen: '
+        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
+        QApplication.processEvents()
+        '''
+        #    13.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
+        '''
+        if vlayer.isValid():
+            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
+            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            """Es carrega el Shape a l'entorn del QGIS"""
+            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            '''S'afegeix el color a la nova entitat'''
+            symbol.setColor(QColor.fromRgb(50,250,250))
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            ''''S'afegeix la capa a la pantalla'''
+            iface.mapCanvas().refresh()
+            #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 3:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+        
+        '''
+        #    14. S'esborren les taules utilitzades durant el càlcul
+        '''
+
+        self.eliminaTaulesCalcul(Fitxer)
+  
+    def eliminaTaulesCalcul(self,Fitxer):
+        global cur
+        global conn
+        try:
+            cur.execute('DROP TABLE IF EXISTS "Xarxa_Prova";\n')
+            cur.execute('DROP TABLE IF EXISTS "Resultat";\n') 
+            cur.execute('DROP TABLE IF EXISTS checkNum;\n')
+            cur.execute('DROP TABLE IF EXISTS "TramsNous_'+Fitxer+'";\n')
+            cur.execute('DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';\n')
+            cur.execute('DROP TABLE IF EXISTS "SegmentsFinals";\n')
+            conn.commit()
+        except Exception as ex:
+            print("Error DROP final")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error DROP final")
+            conn.rollback()
+            self.bar.clearWidgets()
+            self.dlg.Progres.setValue(0)
+            self.dlg.Progres.setVisible(False)
+            self.dlg.lblEstatConn.setText('Connectat')
+            self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+            
+            
             
     def eliminaTaula(self):
         '''
