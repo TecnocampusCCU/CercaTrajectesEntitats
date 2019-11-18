@@ -76,7 +76,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.191115"
+Versio_modul="V_Q3.191118"
 nomBD1=""
 contra1=""
 host1=""
@@ -379,17 +379,27 @@ class CercaTrajectesEntitats:
                 self.ompleCombos(self.dlg.comboCapaDesti, llista, 'Selecciona una entitat', True)
                 self.ompleLletra()
                 
-            except:
+            except Exception as ex:
+                print ("I am unable to connect to the database")
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print (message)
+                QMessageBox.information(None, "Error", "Error canvi connexió")
+                conn.rollback()
                 self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #ff7f7f')
                 self.dlg.lblEstatConn.setText('Error: Hi ha algun camp erroni.')
-                print ("I am unable to connect to the database")
-            
+                return
             
             try:
                 self.cercaDescripcio()
-            except:
+            except Exception as ex:
                 print ("Descripció no  funciona!")
-            
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print (message)
+                QMessageBox.information(None, "Error", "Error canvi connexió")
+                conn.rollback
+                return
         else:
             aux = False
             self.barraEstat_noConnectat()
@@ -578,32 +588,25 @@ class CercaTrajectesEntitats:
             select += '(SELECT numero FROM checkNum WHERE numero < '+ str(int(float(numero))) +' ORDER BY numero DESC LIMIT 1))  as limitat\n'
             select += 'ORDER BY abs('+ str(int(float(numero))) +'-numero) LIMIT 1;'
             
-            try:
-                cur.execute(create)
-                conn.commit()
-            except:
-                print ("ERROR: create taula Numero de la casa")
-                
-            try:
-                count_select = 'select count(*) from checkNum;'
-                cur.execute(count_select)
-                resultat = cur.fetchall()
-                if int(float(resultat[0][0])) == 0:
-                    return '-1'
-            except:
-                print ("ERROR: create taula Numero de la casa")
-                
+            cur.execute(create)
+            conn.commit()
             
-            try:
-                cur.execute(select)
-                resultat = cur.fetchall()
-                nouNumero = resultat[0][0]
-                if int(float(resultat[0][0])) < 100:
-                    nouNumero = '0' + str(resultat[0][0])
-                if int(float(resultat[0][0])) < 10:
-                    nouNumero = '00' + str(resultat[0][0])
-            except:
-                print ("ERROR: SELECT Numero de la casa")
+                
+            count_select = 'select count(*) from checkNum;'
+            cur.execute(count_select)
+            resultat = cur.fetchall()
+            if int(float(resultat[0][0])) == 0:
+                return '-1'
+
+                
+            cur.execute(select)
+            resultat = cur.fetchall()
+            nouNumero = resultat[0][0]
+            if int(float(resultat[0][0])) < 100:
+                nouNumero = '0' + str(resultat[0][0])
+            if int(float(resultat[0][0])) < 10:
+                nouNumero = '00' + str(resultat[0][0])
+
             
             CNBsenseLletra = carrer + str(nouNumero)
             select = 'select count(*) from "dintreilla" where "Carrer_Num_Bis" = \''+ CNBsenseLletra + 'x\';'
@@ -755,7 +758,17 @@ class CercaTrajectesEntitats:
         if lletra == ' ':
             lletra = 'x'
         CNB = itemSel + numero + lletra       
-        CNB = self.comprovaCNB(CNB,itemSel,numero,lletra)
+        try:
+            CNB = self.comprovaCNB(CNB,itemSel,numero,lletra)
+        except Exception as ex:
+            print ("Error comprovaCNB")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error comprovaCNB")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
         if CNB == '-1':
             QMessageBox.information(None, "Error", "TRAM DE VIA SENSE CAP NUMERO POSTAL:\n" + self.dlg.txt_nomCarrer.text() + " " + self.dlg.txt_Numero.text() + " " + self.dlg.comboLletra.currentText())
             self.barraEstat_connectat()
@@ -823,10 +836,20 @@ class CercaTrajectesEntitats:
         start_lyr = QgsVectorLayer(uri.uri(False), "inici", "postgres")
         QApplication.processEvents()
         
-        sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
-        cur.execute(sql_inici)
-        coordenadas = cur.fetchall()
-        start_point = ((str(coordenadas[0]))[1:-1])
+        try:
+            sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+            cur.execute(sql_inici)
+            coordenadas = cur.fetchall()
+            start_point = ((str(coordenadas[0]))[1:-1])
+        except Exception as ex:
+            print ("Error SELECT coordenades")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error SELECT coordenades")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
         
         sql_xarxa="SELECT * FROM \"SegmentsXarxaCarrers\""
         QApplication.processEvents()
@@ -840,7 +863,17 @@ class CercaTrajectesEntitats:
         
         '''Borrar tramos sobrantes'''
         features = resultado['OUTPUT'].getFeatures(QgsFeatureRequest().addOrderBy('cost',True))
-        limit = self.getLimit()
+        try:
+            limit = self.getLimit()
+        except Exception as ex:
+            print ("Error getLimit")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error getLimit")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
         
         resultado['OUTPUT'].startEditing()
         fields = resultado['OUTPUT'].fields()
@@ -936,6 +969,8 @@ class CercaTrajectesEntitats:
         QApplication.processEvents()
         
         if(vlayer.isValid):
+            #orgEncoding=QgsSettings().value('/Processing/encoding') # save setting
+            #QgsSettings().setValue('/Processing/encoding', 'utf-8') # set uft8
             Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
             #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
@@ -971,7 +1006,7 @@ class CercaTrajectesEntitats:
                     color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
                 
                 feature = resultado['OUTPUT'].getFeature(featureOrdreList[x])
-                label = str(feature['ordre']) + ". " +str(feature['NomEntitat'])                    
+                label = str(feature['ordre']) + ". " +str(feature['NomEntitat'])
                 symbol=QgsLineSymbol()
 
                 registry = QgsSymbolLayerRegistry()
@@ -1206,8 +1241,18 @@ class CercaTrajectesEntitats:
         #    tots els camins més curts a tots el punts necessaris
         '''
         select = 'select * from NecessaryPoints_'+Fitxer+' order by pid'
-        cur.execute(select)
-        vec = cur.fetchall() 
+        try:
+            cur.execute(select)
+            vec = cur.fetchall()
+        except Exception as ex:
+            print ("Error SELECT NecessaryPoints")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error SELECT NecesaryPoints")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return 
         create = 'create local temp table "Resultat" as SELECT * FROM (\n'
         for x in range (0,len(vec)):
             if x < len(vec) and x >= 2:
@@ -1274,8 +1319,15 @@ class CercaTrajectesEntitats:
         try:
             cur.execute(drop)
             conn.commit()
-        except:
-            print ("DROP TABLE ERROR 1")
+        except Exception as ex:
+                print ("Error DROP Table 1")
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print (message)
+                QMessageBox.information(None, "Error", "Error DROP Table 1")
+                conn.rollback()
+                self.eliminaTaulesCalcul(Fitxer)
+                return
         
         create = "CREATE local temp TABLE \"SegmentsFinals\" (\n"
         create += "\trouteid int8,\n"
@@ -1483,7 +1535,17 @@ class CercaTrajectesEntitats:
         #    9. Seleccio dels N-camins més proxims al domicili indicat per tal de presentar els resultats
         #    en el quadre de la interficie del modul
         '''
-        limit = self.getLimit()
+        try:
+            limit = self.getLimit()
+        except Exception as ex:
+            print ("Error getLimit")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error getLimit")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            return
         select = 'select e."'+ nomCamp[0][0] +'" as NomEntitat, r.agg_cost as Cost, r.entitatID from "Resultat" r  join "' + self.dlg.comboCapaDesti.currentText() + '" e on r.entitatID = e.id where  r.edge = -1 order by 2 asc limit ' + str(limit) + ';'
         try:
             cur.execute(select)
@@ -1836,11 +1898,10 @@ class CercaTrajectesEntitats:
         global conn
         limitUsuari = self.dlg.SB_camins.value()
         count = 'select count(*) from \"' + self.dlg.comboCapaDesti.currentText() + '\";'
-        try:
-            cur.execute(count)
-            vect = cur.fetchall()
-        except:
-            "ERROR SELECT COUNT"
+        
+        cur.execute(count)
+        vect = cur.fetchall()
+        
         if (limitUsuari > vect[0][0]):
             return vect[0][0]
         else:
