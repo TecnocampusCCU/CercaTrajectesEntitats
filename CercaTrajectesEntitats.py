@@ -76,7 +76,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.191118"
+Versio_modul="V_Q3.191127"
 nomBD1=""
 contra1=""
 host1=""
@@ -340,6 +340,7 @@ class CercaTrajectesEntitats:
         global conn
         s = QSettings()
         self.dlg.comboCapaDesti.clear()
+        self.dlg.comboGraf.clear()
         self.dlg.comboLletra.clear()
         self.dlg.txt_nomCarrer.clear()
         self.dlg.txt_Numero.clear()
@@ -378,6 +379,11 @@ class CercaTrajectesEntitats:
                 llista = cur.fetchall()
                 self.ompleCombos(self.dlg.comboCapaDesti, llista, 'Selecciona una entitat', True)
                 self.ompleLletra()
+                sql2 = "select f_table_name from geometry_columns where ((type = 'MULTILINESTRING' or type = 'LINESTRING') and f_table_schema ='public') order by 1"
+                cur.execute(sql2)
+                llista2 = cur.fetchall()
+                self.ompleCombos(self.dlg.comboGraf, llista2, 'Selecciona una entitat', True)
+                
                 
             except Exception as ex:
                 print ("I am unable to connect to the database")
@@ -512,6 +518,7 @@ class CercaTrajectesEntitats:
         aux = False
         itemSel = None
         self.dlg.comboLletra.clear()
+        self.dlg.comboGraf.clear()
         self.barraEstat_noConnectat()
         self.dlg.list_carrers.clear()
         self.dlg.txt_nomCarrer.clear()
@@ -532,6 +539,34 @@ class CercaTrajectesEntitats:
         lbl_Cost = 'Distància (m)'
         self.dlg.chk_Local.setChecked(True)
         self.dlg.chk_Local.setEnabled(True)
+    
+    def on_Change_ComboGraf(self, state):
+        """
+        En el moment en que es modifica la opcio escollida 
+        del combo o desplegable de la capa de punts,
+        automÃ ticament comprova els camps de la taula escollida.
+        """
+        try:
+            capa=self.dlg.comboGraf.currentText()
+            if capa != "":
+                if capa != 'Selecciona una entitat':
+                    if (self.grafValid(capa)):
+                        pass
+                    else:
+                        QMessageBox.information(None, "Error", 'El graf seleccionat no té la capa de nusos corresponent.\nEscolliu un altre.')
+        except Exception as ex:
+            print ("Error Graf seleccionat")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error Graf seleccionat")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            self.bar.clearWidgets()
+            self.dlg.lblEstatConn.setText('Connectat')
+            self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+            return "ERROR"
+    
     
     def controlErrorsInput(self):
         '''
@@ -554,6 +589,8 @@ class CercaTrajectesEntitats:
             errors.append('No hi ha cap capa de destí seleccionada')
         if self.dlg.comboCapaDesti.currentText() == '':
             errors.append('No hi ha cap capa de destí disponible')
+        if self.dlg.comboGraf.currentText() == 'Selecciona una entitat':
+            errors.append("No hi ha seleccionada cap capa de xarxa")
         return errors
     
     def comprovaCNB(self,CNB,carrer,numero,lletra):
@@ -721,7 +758,7 @@ class CercaTrajectesEntitats:
         '''     
         self.barraEstat_processant()   
         sql_xarxa = 'drop table IF EXISTS "Xarxa_Prova";\n'
-        sql_xarxa += 'create local temp table "Xarxa_Prova" as  (select * from "SegmentsXarxaCarrers");\n'
+        sql_xarxa += 'create local temp table "Xarxa_Prova" as  (select * from "'+self.dlg.comboGraf.currentText()+'");\n'
         if self.dlg.comboCost.currentText() == 'Distancia':
             sql_xarxa += 'update "Xarxa_Prova" set "cost"="LONGITUD_SEGMENT", "reverse_cost"="LONGITUD_SEGMENT";'
         else:
@@ -851,7 +888,7 @@ class CercaTrajectesEntitats:
             self.eliminaTaulesCalcul(Fitxer)
             return
         
-        sql_xarxa="SELECT * FROM \"SegmentsXarxaCarrers\""
+        sql_xarxa="SELECT * FROM \""+self.dlg.comboGraf.currentText()+"\""
         QApplication.processEvents()
         uri.setDataSource("","("+sql_xarxa+")","the_geom","","id")
         QApplication.processEvents()

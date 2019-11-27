@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>583</width>
-    <height>429</height>
+    <height>500</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -19,13 +19,13 @@
   <property name="minimumSize">
    <size>
     <width>583</width>
-    <height>429</height>
+    <height>500</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
     <width>583</width>
-    <height>429</height>
+    <height>500</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -35,7 +35,7 @@
    <property name="geometry">
     <rect>
      <x>500</x>
-     <y>390</y>
+     <y>460</y>
      <width>71</width>
      <height>31</height>
     </rect>
@@ -51,7 +51,7 @@
    <property name="geometry">
     <rect>
      <x>420</x>
-     <y>390</y>
+     <y>460</y>
      <width>71</width>
      <height>31</height>
     </rect>
@@ -535,7 +535,7 @@
      <x>10</x>
      <y>35</y>
      <width>281</width>
-     <height>351</height>
+     <height>411</height>
     </rect>
    </property>
    <property name="sizePolicy">
@@ -653,7 +653,7 @@ border-color: rgb(0, 0, 0);</string>
       <x>10</x>
       <y>101</y>
       <width>256</width>
-      <height>241</height>
+      <height>301</height>
      </rect>
     </property>
    </widget>
@@ -677,7 +677,7 @@ border-color: rgb(0, 0, 0);</string>
      <x>300</x>
      <y>35</y>
      <width>271</width>
-     <height>351</height>
+     <height>411</height>
     </rect>
    </property>
    <property name="title">
@@ -686,8 +686,8 @@ border-color: rgb(0, 0, 0);</string>
    <widget class="QComboBox" name="comboCapaDesti">
     <property name="geometry">
      <rect>
-      <x>18</x>
-      <y>22</y>
+      <x>20</x>
+      <y>20</y>
       <width>241</width>
       <height>22</height>
      </rect>
@@ -697,7 +697,7 @@ border-color: rgb(0, 0, 0);</string>
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>45</y>
+      <y>100</y>
       <width>251</width>
       <height>121</height>
      </rect>
@@ -851,10 +851,33 @@ Parell/Senar</string>
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>179</y>
+      <y>230</y>
       <width>251</width>
-      <height>161</height>
+      <height>171</height>
      </rect>
+    </property>
+   </widget>
+   <widget class="QComboBox" name="comboGraf">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>70</y>
+      <width>241</width>
+      <height>22</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="graf_label">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>50</y>
+      <width>81</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Graf</string>
     </property>
    </widget>
   </widget>
@@ -862,7 +885,7 @@ Parell/Senar</string>
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>400</y>
+     <y>470</y>
      <width>91</width>
      <height>16</height>
     </rect>
@@ -882,7 +905,7 @@ Parell/Senar</string>
    <property name="geometry">
     <rect>
      <x>360</x>
-     <y>400</y>
+     <y>470</y>
      <width>51</width>
      <height>17</height>
     </rect>
