@@ -56,6 +56,8 @@ from qgis.core import QgsPalLayerSettings
 from qgis.core import QgsTextFormat
 from qgis.core import QgsTextBufferSettings
 from qgis.core import QgsVectorLayerSimpleLabeling
+from qgis.core import QgsWkbTypes
+from qgis.core import QgsVectorLayerExporter
 import psycopg2
 import unicodedata
 import datetime
@@ -76,7 +78,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.191127"
+Versio_modul="V_Q3.191205"
 nomBD1=""
 contra1=""
 host1=""
@@ -133,6 +135,9 @@ class CercaTrajectesEntitats:
         self.dlg.bttnProperParell.clicked.connect(self.on_click_ProperParell)
         self.dlg.list_carrers.itemDoubleClicked.connect(self.showItem)
         self.dlg.comboCost.currentIndexChanged.connect(self.changeComboCost)
+        self.dlg.comboLeyenda.currentIndexChanged.connect(self.on_Change_ComboLeyenda)
+        self.dlg.bt_ReloadLeyenda.clicked.connect(self.cerca_elements_Leyenda)
+
         
 
         # Declare instance attributes
@@ -340,6 +345,7 @@ class CercaTrajectesEntitats:
         global conn
         s = QSettings()
         self.dlg.comboCapaDesti.clear()
+        self.dlg.comboLeyenda.clear()
         self.dlg.comboGraf.clear()
         self.dlg.comboLletra.clear()
         self.dlg.txt_nomCarrer.clear()
@@ -347,6 +353,8 @@ class CercaTrajectesEntitats:
         self.dlg.list_carrers.clear()
         select = 'Selecciona connexió'
         nom_conn=self.dlg.comboConnexio.currentText()
+        
+        
         if nom_conn != select:
             aux = True
             s.beginGroup("PostgreSQL/connections/"+nom_conn)
@@ -384,6 +392,8 @@ class CercaTrajectesEntitats:
                 llista2 = cur.fetchall()
                 self.ompleCombos(self.dlg.comboGraf, llista2, 'Selecciona una entitat', True)
                 
+                self.cerca_elements_Leyenda()
+                
                 
             except Exception as ex:
                 print ("I am unable to connect to the database")
@@ -409,6 +419,29 @@ class CercaTrajectesEntitats:
         else:
             aux = False
             self.barraEstat_noConnectat()
+            
+    
+    def cerca_elements_Leyenda(self):
+        
+        if self.dlg.comboConnexio.currentText() != 'Selecciona connexió':
+            try: #Accedir als elements de la llegenda que siguin de tipus punt.
+                aux = []
+                layers = QgsProject.instance().mapLayers().values()
+                for layer in layers:
+                    #print(layer.type())
+                    if layer.type()==QgsMapLayer.VectorLayer:
+                        if layer.wkbType()==QgsWkbTypes.Point:
+                            aux.append(layer.name())
+                        
+                self.ompleCombos(self.dlg.comboLeyenda, aux, 'Selecciona una entitat', True)
+            except Exception as ex:
+                missatge="Error al afegir els elements de la llegenda"
+                print (missatge)
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print (message)
+                QMessageBox.information(None, "Error", missatge)
+                return
     
     def showItem(self):
         '''
@@ -473,7 +506,10 @@ class CercaTrajectesEntitats:
         predefInList = None
         for elem in llista:
             try:
-                item = QStandardItem(str(elem[0]))
+                if isinstance(elem, tuple):
+                    item = QStandardItem(unicode(elem[0]))
+                else:
+                    item = QStandardItem(str(elem))
             except TypeError:
                 item = QStandardItem(str(elem[0]))
             model.appendRow(item)
@@ -518,6 +554,7 @@ class CercaTrajectesEntitats:
         aux = False
         itemSel = None
         self.dlg.comboLletra.clear()
+        self.dlg.comboLeyenda.clear()
         self.dlg.comboGraf.clear()
         self.barraEstat_noConnectat()
         self.dlg.list_carrers.clear()
@@ -539,6 +576,7 @@ class CercaTrajectesEntitats:
         lbl_Cost = 'Distància (m)'
         self.dlg.chk_Local.setChecked(True)
         self.dlg.chk_Local.setEnabled(True)
+        self.dlg.tabWidget_Destino.setCurrentIndex(0)
     
     def on_Change_ComboGraf(self, state):
         """
@@ -585,12 +623,16 @@ class CercaTrajectesEntitats:
             errors.append("El número de policia no és vàlid")
         if itemSel == None:
             errors.append('El carrer de la llista no està correctament seleccionat')
-        if self.dlg.comboCapaDesti.currentText() == 'Selecciona una entitat':
-            errors.append('No hi ha cap capa de destí seleccionada')
         if self.dlg.comboCapaDesti.currentText() == '':
             errors.append('No hi ha cap capa de destí disponible')
         if self.dlg.comboGraf.currentText() == 'Selecciona una entitat':
             errors.append("No hi ha seleccionada cap capa de xarxa")
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            if self.dlg.comboCapaDesti.currentText() == 'Selecciona una entitat':
+                errors.append('No hi ha cap capa de destí seleccionada')
+        else:
+            if self.dlg.comboLeyenda.currentText() == 'Selecciona una entitat':
+                errors.append('No hi ha cap capa de destí seleccionada')
         return errors
     
     def comprovaCNB(self,CNB,carrer,numero,lletra):
@@ -717,6 +759,86 @@ class CercaTrajectesEntitats:
         return -1
     
     
+    
+    def on_Change_ComboLeyenda(self):
+        """
+        En el moment en que es modifica la opcio escollida 
+        del combo o desplegable de la capa de punts,
+        automÃ ticament comprova els camps de la taula escollida.
+        """
+        
+        L_capa=self.dlg.comboLeyenda.currentText()  
+             
+        if L_capa == '' or L_capa == 'Selecciona una entitat':
+            return
+        
+        errors = self.controlEntitatLeyenda(L_capa) #retorna una llista amb aquells camps (id, geom, Nom) que no hi siguin.
+
+        if len(errors) < 2:  # errors es una llista amb els camps que te la taula, si hi ha menys de 2, significa que falta algun camp.
+            ErrorMessage = "La capa de destí seleccionada no es valida, necessita els camps (id, Nom). Li falten:\n"
+            if "id" not in errors:
+                ErrorMessage+= '\n-"id"\n'
+            #if "geom" not in errors:
+            #    ErrorMessage+= '\n-"geom"\n'
+            if "Nom" not in errors:
+                ErrorMessage+= '\n-"Nom"\n'
+            #if "NPlaces" not in errors:
+            #    ErrorMessage+= '\n-"NPlaces"\n'
+            
+            QMessageBox.information(None, "Error", ErrorMessage+'\n')
+            
+            return False
+    
+        else:
+            #self.dlg.TB_titol.setText(L_capa)
+            return True
+        
+    def controlEntitatLeyenda(self,entitat):
+        '''
+        Aquest metode mira si la entitat rebuda te els camps (id, geom, Nom) retorna una llista amb aquells camps que hi siguin.
+        '''
+        global cur
+        global conn
+        list = []
+        
+        layers = QgsProject.instance().mapLayers().values()
+        if layers != None:
+            for layer in layers:
+                if layer.type()==QgsMapLayer.VectorLayer:
+                    if layer.sourceName() == entitat:
+                        for each in layer.fields():
+                            if each.name() == "id":
+                                list.append("id")
+                            #elif each.name() == "geom":
+                            #    list.append("geom")
+                            elif each.name() == "Nom":
+                                list.append("Nom")
+        return list     
+    
+    
+    def cerca_elements_Leyenda(self):
+        
+        if self.dlg.comboConnexio.currentText() != 'Selecciona connexió':
+            try: #Accedir als elements de la llegenda que siguin de tipus punt.
+                aux = []
+                layers = QgsProject.instance().mapLayers().values()
+                for layer in layers:
+                    #print(layer.type())
+                    if layer.type()==QgsMapLayer.VectorLayer:
+                        if layer.wkbType()==QgsWkbTypes.Point:
+                            aux.append(layer.name())
+                        
+                self.ompleCombos(self.dlg.comboLeyenda, aux, 'Selecciona una entitat', True)
+            except Exception as ex:
+                missatge="Error al afegir els elements de la llegenda"
+                print (missatge)
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print (message)
+                QMessageBox.information(None, "Error", missatge)
+                return
+    
+    
     def on_click_Inici(self):
         '''
         FUNCIÓ DE CÀLCUL PRINCIPAL
@@ -733,12 +855,20 @@ class CercaTrajectesEntitats:
         global usuari1
         
         global lbl_Cost
+        global Fitxer
+        
+        Fitxer=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+        
         
         self.dlg.taulaResultat.clear()
         self.eliminaTaula()
         self.dlg.lbl_numpol.setText('')
         QApplication.processEvents()
         Fitxer=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+        
+        
+            
+
         
         '''Control d'errors'''
         llistaErrors = self.controlErrorsInput()
@@ -748,15 +878,125 @@ class CercaTrajectesEntitats:
                 llista += ("- "+llistaErrors[i] + '\n')
             QMessageBox.information(None, "Error", llista)
             return
+        
+        if self.dlg.tabWidget_Destino.currentIndex() != 0:
+            if (not(self.on_Change_ComboLeyenda())):
+                return
          
+        self.barraEstat_processant()
             
+        uri = QgsDataSourceUri()
+        try:
+            uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
+        except Exception as ex:
+            print ("Error a la connexio")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error a la connexio")
+            conn.rollback()
+            return
+            
+        #********************************************************************************************************
+        #    Afegir l'exportació del layer, i posteriorment llençar un avis en cas de que l'entitat sigui buida 
+        #********************************************************************************************************
+        '''Exportar temporalment la entitat seleccionada de la llegenda a la BBDD'''
+        if self.dlg.tabWidget_Destino.currentIndex() != 0: 
+            layers = QgsProject.instance().mapLayers().values()
+            if layers != None:
+                for layer in layers:
+                    if layer.name() == self.dlg.comboLeyenda.currentText():
+                        error = QgsVectorLayerExporter.exportLayer(layer, 'table="public"."LayerExportat'+Fitxer+'" (geom) '+uri.connectionInfo(), "postgres", layer.crs(), False)
+                        if error[0] != 0:
+                            iface.messageBar().pushMessage(u'Error', error[1])
+                        
+                        #cada usuari tindrà la seva taula local temporal "LayerExportat", es una versió Local Temp del Layer exportat de la leyenda.
+                        #Amb l'objectiu de que dos usuaris puguin treballar amb el mateix nom de la taula, eliminant concurrencia.
+                        try:
+                            sql_SRID="SELECT Find_SRID('public', 'LayerExportat"+Fitxer+"', 'geom')"
+                            cur.execute(sql_SRID)
+                        except Exception as ex:
+                            print ("ERROR SELECT SRID")
+                            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                            message = template.format(type(ex).__name__, ex.args)
+                            print (message)
+                            QMessageBox.information(None, "Error", "ERROR SELECT SRID")
+                            conn.rollback()
+                            self.eliminaTaulesCalcul(Fitxer)
+                
+                            self.bar.clearWidgets()
+                            self.dlg.Progres.setValue(0)
+                            self.dlg.Progres.setVisible(False)
+                            self.dlg.lblEstatConn.setText('Connectat')
+                            self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                            return
+                        auxlist = cur.fetchall()
+                        Valor_SRID=auxlist[0][0]
+                        alter = 'ALTER TABLE "LayerExportat'+Fitxer+'" ALTER COLUMN geom TYPE geometry(Point,'+str(Valor_SRID)+') USING ST_GeometryN(geom,1);'
+                        
+                        try:
+                            cur.execute(alter)
+                            conn.commit()
+                        except Exception as ex:
+                            print ("ALTER TABLE ERROR_geometry")
+                            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                            message = template.format(type(ex).__name__, ex.args)
+                            print (message)
+                            QMessageBox.information(None, "Error", "ALTER TABLE ERROR_geometry")
+                            conn.rollback()
+                            self.eliminaTaulesCalcul(Fitxer)
+                
+                            self.bar.clearWidgets()
+                            self.dlg.Progres.setValue(0)
+                            self.dlg.Progres.setVisible(False)
+                            self.dlg.lblEstatConn.setText('Connectat')
+                            self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                            return
+                            
+                            
+                            
+                        select = 'select count (*) from "LayerExportat'+Fitxer+'"'
+                        
+                        try:                
+                            cur.execute(select)
+                            auxlist = cur.fetchall()
+                            if auxlist[0][0] == 0:
+                                ErrorMessage = 'La entitat escollida es buida'
+                                QMessageBox.information(None, "Error", ErrorMessage+'\n')
+                                conn.rollback()
+                                self.eliminaTaulesCalcul(Fitxer)
+                    
+                                self.bar.clearWidgets()
+                                self.dlg.Progres.setValue(0)
+                                self.dlg.Progres.setVisible(False)
+                                self.dlg.lblEstatConn.setText('Connectat')
+                                self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                                return
+                                
+                        except Exception as ex:
+                            print("ERROR select LayerExportat")
+                            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                            message = template.format(type(ex).__name__, ex.args)
+                            print (message)
+                            QMessageBox.information(None, "Error", errorMessage)
+                            conn.rollback()
+                            self.eliminaTaulesCalcul(Fitxer)
+                
+                            self.bar.clearWidgets()
+                            self.dlg.Progres.setValue(0)
+                            self.dlg.Progres.setVisible(False)
+                            self.dlg.lblEstatConn.setText('Connectat')
+                            self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                            return
+            
+        
         '''
         #==============================================
         #    1. Es crea una còpia de la Xarxa de segments i se'n modifiquen el cost i reverse_cost
         #     on s'hi posa el la llargada del segment.
         # ==============================================
         '''     
-        self.barraEstat_processant()   
+           
         sql_xarxa = 'drop table IF EXISTS "Xarxa_Prova";\n'
         sql_xarxa += 'create local temp table "Xarxa_Prova" as  (select * from "'+self.dlg.comboGraf.currentText()+'");\n'
         if self.dlg.comboCost.currentText() == 'Distancia':
@@ -835,7 +1075,7 @@ class CercaTrajectesEntitats:
         a=time.time()
         
         if(self.dlg.chk_Local.isChecked()):
-            self.local(CNB)     
+            self.local(CNB,uri)     
         
         else:
             self.server(CNB)
@@ -845,21 +1085,16 @@ class CercaTrajectesEntitats:
         self.barraEstat_connectat()
         print ("Durada: "+str(int(time.time()-a))+" s.")
         
-    def local(self,CNB):
-        uri = QgsDataSourceUri()
-        try:
-            uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
-        except Exception as ex:
-            print ("Error a la connexio")
-            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-            message = template.format(type(ex).__name__, ex.args)
-            print (message)
-            QMessageBox.information(None, "Error", "Error a la connexio")
-            conn.rollback()
-            self.eliminaTaulesCalcul(Fitxer)
-            return
+    def local(self,CNB, uri):
+        global Fitxer
+        
+        
         QApplication.processEvents()
-        sql_punts = 'SELECT * FROM \"' + self.dlg.comboCapaDesti.currentText() + '\"'
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            sql_punts = 'SELECT * FROM \"' + self.dlg.comboCapaDesti.currentText() + '\"'
+        else:
+            sql_punts = "SELECT * FROM \"LayerExportat"+Fitxer+"\""
+        
         QApplication.processEvents()
         uri.setDataSource("","("+sql_punts+")","geom","","id")
         QApplication.processEvents()
@@ -996,7 +1231,11 @@ class CercaTrajectesEntitats:
 
       
         '''Representación caminos de destino'''
-        titol=self.dlg.comboCapaDesti.currentText()
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            titol=self.dlg.comboCapaDesti.currentText()
+        else:
+            titol=self.dlg.comboLeyenda.currentText()
+        
         titol2='Camins més propers a '
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         #vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
@@ -1096,7 +1335,11 @@ class CercaTrajectesEntitats:
         
         # Es prepara el titol de la capa que apareixerà a la llegenda
         '''
-        titol=self.dlg.comboCapaDesti.currentText()
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            titol=self.dlg.comboCapaDesti.currentText()
+        else:
+            titol=self.dlg.comboLeyenda.currentText() 
+                   
         titol2='Entitats de destí '
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         vlayer = puntos_destino['OUTPUT']
@@ -1194,6 +1437,8 @@ class CercaTrajectesEntitats:
                    
                     
     def server(self, CNB):
+        global Fitxer
+        
         '''Cálculo en el servidor'''
         '''
         #==============================================
@@ -1240,7 +1485,11 @@ class CercaTrajectesEntitats:
         #    4.2 S'afegeixen els punts necessaris a la taula
         '''            
         insert = 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID,the_geom) (SELECT 0, ST_Centroid("geom") the_geom from "dintreilla" where "Carrer_Num_Bis" = \''+CNB+'\');\n'
-        insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, the_geom) (SELECT "id", ST_Centroid("geom") the_geom from "' + self.dlg.comboCapaDesti.currentText() + '" order by "id");'
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, the_geom) (SELECT "id", ST_Centroid("geom") the_geom from "' + self.dlg.comboCapaDesti.currentText() + '" order by "id");'
+        else:
+            insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, the_geom) (SELECT "id", ST_Centroid("geom") the_geom from "LayerExportat'+Fitxer+'" order by "id");'
+        
         try:
             cur.execute(insert)
             conn.commit()
@@ -1305,7 +1554,10 @@ class CercaTrajectesEntitats:
         #    4.5 Selecció del nom del camp on figura el Nom de l'entitat de destí
         '''
         try:
-            select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'Nom%';"
+            if self.dlg.tabWidget_Destino.currentIndex() == 0:
+                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'Nom%';"
+            else:
+                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = 'LayerExportat"+Fitxer+"'and column_name like 'Nom%';"
             cur.execute(select)
             nomCamp = cur.fetchall()
         except Exception as ex:
@@ -1583,7 +1835,10 @@ class CercaTrajectesEntitats:
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
             return
-        select = 'select e."'+ nomCamp[0][0] +'" as NomEntitat, r.agg_cost as Cost, r.entitatID from "Resultat" r  join "' + self.dlg.comboCapaDesti.currentText() + '" e on r.entitatID = e.id where  r.edge = -1 order by 2 asc limit ' + str(limit) + ';'
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            select = 'select e."'+ nomCamp[0][0] +'" as NomEntitat, r.agg_cost as Cost, r.entitatID from "Resultat" r  join "' + self.dlg.comboCapaDesti.currentText() + '" e on r.entitatID = e.id where  r.edge = -1 order by 2 asc limit ' + str(limit) + ';'
+        else:
+            select = 'select e."'+ nomCamp[0][0] +'" as NomEntitat, r.agg_cost as Cost, r.entitatID from "Resultat" r  join "LayerExportat'+Fitxer+'" e on r.entitatID = e.id where  r.edge = -1 order by 2 asc limit ' + str(limit) + ';'
         try:
             cur.execute(select)
             vec = cur.fetchall()
@@ -1682,7 +1937,10 @@ class CercaTrajectesEntitats:
         '''
         #    11.2 Es prepara el titol de la capa que apareixerà a la llegenda
         '''
-        titol=self.dlg.comboCapaDesti.currentText()
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            titol=self.dlg.comboCapaDesti.currentText()
+        else:
+            titol=self.dlg.comboLeyenda.currentText()
         titol2='Camins més propers a '
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
@@ -1777,7 +2035,10 @@ class CercaTrajectesEntitats:
         '''
         #    12.2 Es prepara el titol de la capa que apareixerà a la llegenda
         '''
-        titol=self.dlg.comboCapaDesti.currentText()
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            titol=self.dlg.comboCapaDesti.currentText()
+        else:
+            titol=self.dlg.comboLeyenda.currentText()
         titol2='Entitats de destí '
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
@@ -1934,7 +2195,11 @@ class CercaTrajectesEntitats:
         global cur
         global conn
         limitUsuari = self.dlg.SB_camins.value()
-        count = 'select count(*) from \"' + self.dlg.comboCapaDesti.currentText() + '\";'
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            count = 'select count(*) from \"' + self.dlg.comboCapaDesti.currentText() + '\";'
+        else:
+            count = 'select count(*) from \"' + self.dlg.comboLeyenda.currentText() + '\";'
+        
         
         cur.execute(count)
         vect = cur.fetchall()

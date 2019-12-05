@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>583</width>
-    <height>500</height>
+    <height>560</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -24,8 +24,8 @@
   </property>
   <property name="maximumSize">
    <size>
-    <width>583</width>
-    <height>500</height>
+    <width>800</width>
+    <height>800</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -35,7 +35,7 @@
    <property name="geometry">
     <rect>
      <x>500</x>
-     <y>460</y>
+     <y>520</y>
      <width>71</width>
      <height>31</height>
     </rect>
@@ -51,7 +51,7 @@
    <property name="geometry">
     <rect>
      <x>420</x>
-     <y>460</y>
+     <y>520</y>
      <width>71</width>
      <height>31</height>
     </rect>
@@ -535,7 +535,7 @@
      <x>10</x>
      <y>35</y>
      <width>281</width>
-     <height>411</height>
+     <height>471</height>
     </rect>
    </property>
    <property name="sizePolicy">
@@ -653,7 +653,7 @@ border-color: rgb(0, 0, 0);</string>
       <x>10</x>
       <y>101</y>
       <width>256</width>
-      <height>301</height>
+      <height>361</height>
      </rect>
     </property>
    </widget>
@@ -670,6 +670,15 @@ border-color: rgb(0, 0, 0);</string>
      <string>X</string>
     </property>
    </widget>
+   <zorder>txt_nomCarrer</zorder>
+   <zorder>lblHab</zorder>
+   <zorder>txt_Numero</zorder>
+   <zorder>lblNumero</zorder>
+   <zorder>lblLletra</zorder>
+   <zorder>comboLletra</zorder>
+   <zorder>list_carrers</zorder>
+   <zorder>bt_delete</zorder>
+   <zorder>tabWidget_Destino</zorder>
   </widget>
   <widget class="QGroupBox" name="desti">
    <property name="geometry">
@@ -677,27 +686,17 @@ border-color: rgb(0, 0, 0);</string>
      <x>300</x>
      <y>35</y>
      <width>271</width>
-     <height>411</height>
+     <height>471</height>
     </rect>
    </property>
    <property name="title">
     <string>Destí</string>
    </property>
-   <widget class="QComboBox" name="comboCapaDesti">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>20</y>
-      <width>241</width>
-      <height>22</height>
-     </rect>
-    </property>
-   </widget>
    <widget class="QGroupBox" name="groupBox">
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>100</y>
+      <y>160</y>
       <width>251</width>
       <height>121</height>
      </rect>
@@ -846,46 +845,280 @@ Parell/Senar</string>
       <string>Cost de nusos</string>
      </property>
     </widget>
+    <zorder>bttnProper</zorder>
+    <zorder>bttnProperParell</zorder>
+    <zorder>SB_camins</zorder>
+    <zorder>lbl_numpol</zorder>
+    <zorder>label</zorder>
+    <zorder>comboCost</zorder>
+    <zorder>chk_CostNusos</zorder>
+    <zorder>tabWidget_Destino</zorder>
    </widget>
    <widget class="QTableWidget" name="taulaResultat">
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>230</y>
+      <y>290</y>
       <width>251</width>
       <height>171</height>
      </rect>
     </property>
    </widget>
-   <widget class="QComboBox" name="comboGraf">
+   <widget class="QGroupBox" name="groupBox_2">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>70</y>
-      <width>241</width>
-      <height>22</height>
+      <x>10</x>
+      <y>20</y>
+      <width>251</width>
+      <height>91</height>
      </rect>
     </property>
+    <property name="title">
+     <string>Selecciona l'entitat puntual</string>
+    </property>
+    <widget class="QTabWidget" name="tabWidget_Destino">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>19</y>
+       <width>231</width>
+       <height>71</height>
+      </rect>
+     </property>
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <property name="iconSize">
+      <size>
+       <width>16</width>
+       <height>16</height>
+      </size>
+     </property>
+     <widget class="QWidget" name="tab_BaseDades">
+      <attribute name="title">
+       <string>Base de Dades</string>
+      </attribute>
+      <widget class="QComboBox" name="comboCapaDesti">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>10</y>
+         <width>201</width>
+         <height>22</height>
+        </rect>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="tab_Llegenda">
+      <attribute name="title">
+       <string>Llegenda</string>
+      </attribute>
+      <widget class="QComboBox" name="comboLeyenda">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>10</y>
+         <width>141</width>
+         <height>22</height>
+        </rect>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="bt_ReloadLeyenda">
+       <property name="geometry">
+        <rect>
+         <x>160</x>
+         <y>10</y>
+         <width>60</width>
+         <height>24</height>
+        </rect>
+       </property>
+       <property name="palette">
+        <palette>
+         <active>
+          <colorrole role="Button">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Light">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Midlight">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="BrightText">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Base">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+         </active>
+         <inactive>
+          <colorrole role="Button">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Light">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Midlight">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="BrightText">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Base">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+         </inactive>
+         <disabled>
+          <colorrole role="Button">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Light">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Midlight">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="BrightText">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>217</green>
+             <blue>128</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Base">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>240</red>
+             <green>240</green>
+             <blue>240</blue>
+            </color>
+           </brush>
+          </colorrole>
+         </disabled>
+        </palette>
+       </property>
+       <property name="toolTip">
+        <string>Recarregar elements de llegenda</string>
+       </property>
+       <property name="text">
+        <string>Actualitza</string>
+       </property>
+      </widget>
+     </widget>
+    </widget>
    </widget>
-   <widget class="QLabel" name="graf_label">
+   <widget class="QGroupBox" name="groupBox_3">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>50</y>
-      <width>81</width>
-      <height>16</height>
+      <x>10</x>
+      <y>110</y>
+      <width>251</width>
+      <height>51</height>
      </rect>
     </property>
-    <property name="text">
-     <string>Graf</string>
+    <property name="title">
+     <string>Selecciona el graf</string>
     </property>
+    <widget class="QComboBox" name="comboGraf">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>21</y>
+       <width>201</width>
+       <height>22</height>
+      </rect>
+     </property>
+    </widget>
    </widget>
   </widget>
   <widget class="QLabel" name="versio">
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>470</y>
+     <y>530</y>
      <width>91</width>
      <height>16</height>
     </rect>
@@ -905,7 +1138,7 @@ Parell/Senar</string>
    <property name="geometry">
     <rect>
      <x>360</x>
-     <y>470</y>
+     <y>530</y>
      <width>51</width>
      <height>17</height>
     </rect>
