@@ -1150,7 +1150,7 @@ class CercaTrajectesEntitats:
         resultado['OUTPUT'].startEditing()
         fields = resultado['OUTPUT'].fields()
         for x in range(len(fields)):
-            if('Nom' in fields[x].displayName()):
+            if('nom' in fields[x].displayName().lower()):
                 resultado['OUTPUT'].renameAttribute(x,'NomEntitat')
             elif(fields[x].displayName()=='id'):
                 resultado['OUTPUT'].renameAttribute(x,'entitatid')
@@ -1180,7 +1180,9 @@ class CercaTrajectesEntitats:
         puntos_destino['OUTPUT'].startEditing()
         fields = puntos_destino['OUTPUT'].fields()
         for x in range(len(fields)):
-            if('Nom' in fields[x].displayName()):
+            print(fields[x].displayName())
+            if('nom' in fields[x].displayName().lower()):
+                print('OK!!!!!')
                 puntos_destino['OUTPUT'].renameAttribute(x,'NomEntitat')
             elif(fields[x].displayName()=='id'):
                 puntos_destino['OUTPUT'].renameAttribute(x,'entitatid')
@@ -1188,6 +1190,11 @@ class CercaTrajectesEntitats:
         puntos_destino['OUTPUT'].addAttribute(QgsField('ordre', QVariant.Int))
         puntos_destino['OUTPUT'].commitChanges()
         
+        fields = puntos_destino['OUTPUT'].fields()
+        for x in range(len(fields)):
+            print(fields[x].displayName())
+            
+                     
         
         features = puntos_destino['OUTPUT'].getFeatures()
         puntos_destino['OUTPUT'].startEditing()
@@ -1325,6 +1332,7 @@ class CercaTrajectesEntitats:
             myLayerNode.setCustomProperty("showFeatureCount", False)
             QApplication.processEvents()
             iface.mapCanvas().refresh()
+            self.eliminaTaulesCalcul(Fitxer)
             ''''S'afegeix la capa a la pantalla'''
             #iface.legendInterface().refreshLayerSymbology(vlayer)
         else:
@@ -1555,9 +1563,9 @@ class CercaTrajectesEntitats:
         '''
         try:
             if self.dlg.tabWidget_Destino.currentIndex() == 0:
-                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'Nom%';"
+                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'Nom';"
             else:
-                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = 'LayerExportat"+Fitxer+"'and column_name like 'Nom%';"
+                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = 'LayerExportat"+Fitxer+"'and lower(column_name) like 'nom';"
             cur.execute(select)
             nomCamp = cur.fetchall()
         except Exception as ex:
@@ -2156,6 +2164,7 @@ class CercaTrajectesEntitats:
             cur.execute('DROP TABLE IF EXISTS "TramsNous_'+Fitxer+'";\n')
             cur.execute('DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';\n')
             cur.execute('DROP TABLE IF EXISTS "SegmentsFinals";\n')
+            cur.execute('DROP TABLE IF EXISTS "LayerExportat'+Fitxer+'";\n')
             conn.commit()
         except Exception as ex:
             print("Error DROP final")
@@ -2194,11 +2203,12 @@ class CercaTrajectesEntitats:
         '''
         global cur
         global conn
+        global Fitxer
         limitUsuari = self.dlg.SB_camins.value()
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
             count = 'select count(*) from \"' + self.dlg.comboCapaDesti.currentText() + '\";'
         else:
-            count = 'select count(*) from \"' + self.dlg.comboLeyenda.currentText() + '\";'
+            count = 'select count(*) from "LayerExportat'+Fitxer+'";'
         
         
         cur.execute(count)
