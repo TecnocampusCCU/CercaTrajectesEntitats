@@ -28,7 +28,7 @@ import processing
 from os.path import expanduser
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from PyQt5.QtWidgets import QAction,QMessageBox,QTableWidgetItem, QApplication
+from PyQt5.QtWidgets import QAction,QMessageBox,QTableWidgetItem, QApplication, QToolBar
 from qgis.core import QgsMapLayer
 from qgis.core import QgsDataSourceUri
 from qgis.core import QgsVectorLayer
@@ -78,7 +78,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.191205"
+Versio_modul="V_Q3.200108"
 nomBD1=""
 contra1=""
 host1=""
@@ -144,8 +144,18 @@ class CercaTrajectesEntitats:
         self.actions = []
         self.menu = self.tr('&CCU')
         # TODO: We are going to let the user set this up in a future iteration
-        self.toolbar = self.iface.addToolBar('CCU')
-        self.toolbar.setObjectName('CercaTrajectesEntitats')
+        #self.toolbar = self.iface.addToolBar('CCU')
+        #self.toolbar.setObjectName('CercaTrajectesEntitats')
+        
+        trobat=False
+        for x in iface.mainWindow().findChildren(QToolBar,'CCU'): 
+            self.toolbar = x
+            trobat=True
+        
+        if not trobat:
+            self.toolbar = self.iface.addToolBar('CCU')
+            self.toolbar.setObjectName('CCU')
+        
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -2245,13 +2255,16 @@ class CercaTrajectesEntitats:
         
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
-        for action in self.actions:
+        '''for action in self.actions:
             self.iface.removePluginMenu(
                 self.tr('&exemple'),
                 action)
             self.iface.removeToolBarIcon(action)
         # remove the toolbar
-        del self.toolbar
+        del self.toolbar'''
+        for action in self.actions:
+            self.iface.removePluginMenu('&Cerca Trajectes Entitats', action)
+            self.toolbar.removeAction(action)
 
     def run(self):
         """Run method that performs all the real work"""
