@@ -78,7 +78,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.200108"
+Versio_modul="V_Q3.200114"
 nomBD1=""
 contra1=""
 host1=""
@@ -2263,7 +2263,7 @@ class CercaTrajectesEntitats:
         # remove the toolbar
         del self.toolbar'''
         for action in self.actions:
-            self.iface.removePluginMenu('&Cerca Trajectes Entitats', action)
+            self.iface.removePluginMenu('&CCU', action)
             self.toolbar.removeAction(action)
 
     def run(self):
