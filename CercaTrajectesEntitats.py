@@ -78,7 +78,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.200114"
+Versio_modul="V_Q3.200214"
 nomBD1=""
 contra1=""
 host1=""
@@ -867,6 +867,7 @@ class CercaTrajectesEntitats:
         global lbl_Cost
         global Fitxer
         
+        self.dlg.setEnabled(False)
         Fitxer=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
         
         
@@ -887,10 +888,12 @@ class CercaTrajectesEntitats:
             for i in range (0,len(llistaErrors)):
                 llista += ("- "+llistaErrors[i] + '\n')
             QMessageBox.information(None, "Error", llista)
+            self.dlg.setEnabled(True)
             return
         
         if self.dlg.tabWidget_Destino.currentIndex() != 0:
             if (not(self.on_Change_ComboLeyenda())):
+                self.dlg.setEnabled(True)
                 return
          
         self.barraEstat_processant()
@@ -905,6 +908,7 @@ class CercaTrajectesEntitats:
             print (message)
             QMessageBox.information(None, "Error", "Error a la connexio")
             conn.rollback()
+            self.dlg.setEnabled(True)
             return
             
         #********************************************************************************************************
@@ -939,6 +943,7 @@ class CercaTrajectesEntitats:
                             self.dlg.Progres.setVisible(False)
                             self.dlg.lblEstatConn.setText('Connectat')
                             self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                            self.dlg.setEnabled(True)
                             return
                         auxlist = cur.fetchall()
                         Valor_SRID=auxlist[0][0]
@@ -961,6 +966,7 @@ class CercaTrajectesEntitats:
                             self.dlg.Progres.setVisible(False)
                             self.dlg.lblEstatConn.setText('Connectat')
                             self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                            self.dlg.setEnabled(True)
                             return
                             
                             
@@ -997,6 +1003,7 @@ class CercaTrajectesEntitats:
                             self.dlg.Progres.setVisible(False)
                             self.dlg.lblEstatConn.setText('Connectat')
                             self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                            self.dlg.setEnabled(True)
                             return
             
         
@@ -1027,6 +1034,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "CREATE Xarxa_Prova TABLE ERROR")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         '''
@@ -1055,6 +1063,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error comprovaCNB")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         if CNB == '-1':
             QMessageBox.information(None, "Error", "TRAM DE VIA SENSE CAP NUMERO POSTAL:\n" + self.dlg.txt_nomCarrer.text() + " " + self.dlg.txt_Numero.text() + " " + self.dlg.comboLletra.currentText())
@@ -1073,7 +1082,9 @@ class CercaTrajectesEntitats:
                 QMessageBox.information(None, "Error", "Error DROP break adreça no trobada")
                 conn.rollback()
                 self.eliminaTaulesCalcul(Fitxer)
+                self.dlg.setEnabled(True)
                 return
+            self.dlg.setEnabled(True)
             return
         
         '''
@@ -1092,6 +1103,7 @@ class CercaTrajectesEntitats:
         '''
         #    15. Es posa la barra informativa inferior a connectat
         '''
+        self.dlg.setEnabled(True)
         self.barraEstat_connectat()
         print ("Durada: "+str(int(time.time()-a))+" s.")
         
@@ -1119,6 +1131,7 @@ class CercaTrajectesEntitats:
         QApplication.processEvents()
         
         try:
+            print(CNB)
             sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
             cur.execute(sql_inici)
             coordenadas = cur.fetchall()
@@ -1131,6 +1144,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error SELECT coordenades")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         sql_xarxa="SELECT * FROM \""+self.dlg.comboGraf.currentText()+"\""
@@ -1155,6 +1169,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error getLimit")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         resultado['OUTPUT'].startEditing()
@@ -1477,6 +1492,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error DROP TABLE 1")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         create = 'CREATE TABLE NecessaryPoints_'+Fitxer+' (\n'
@@ -1497,6 +1513,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error CREATE NecessaryPoints")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
             
         '''
@@ -1519,13 +1536,38 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error INSERT NecessaryPoints")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         '''
         #    4.3 S'afegeix el id del tram al que estan més pròxims els punts, els punts projectats sobre el graf 
         #    i la fracció de segment a on estant 
         '''
-        update = 'UPDATE NecessaryPoints_'+Fitxer+' set "edge_id"=tram_proper."tram_id" from (SELECT distinct on(Poi."pid") Poi."pid" As Punt_id,Sg."id" as Tram_id, ST_Distance(Sg."the_geom",Poi."the_geom")  as dist FROM "Xarxa_Prova" as Sg,NecessaryPoints_'+Fitxer+' AS Poi ORDER BY  Poi."pid",ST_Distance(Sg."the_geom",Poi."the_geom"),Sg."id") tram_proper where NecessaryPoints_'+Fitxer+'."pid"=tram_proper."punt_id";\n'
+       
+        try:
+            sql_SRID="SELECT Find_SRID('public', '"+self.dlg.comboGraf.currentText()+"', 'the_geom')"
+            cur.execute(sql_SRID)
+        except Exception as ex:
+            print ("ERROR SELECT SRID")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "ERROR SELECT SRID")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+
+            self.bar.clearWidgets()
+            self.dlg.Progres.setValue(0)
+            self.dlg.Progres.setVisible(False)
+            self.dlg.lblEstatConn.setText('Connectat')
+            self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+            self.dlg.setEnabled(True)
+            return
+        auxlist = cur.fetchall()
+        Valor_SRID=auxlist[0][0]
+       
+        update = 'UPDATE NecessaryPoints_'+Fitxer+' SET the_geom = ST_Transform(the_geom,'+str(Valor_SRID)+');\n'
+        update += 'UPDATE NecessaryPoints_'+Fitxer+' set "edge_id"=tram_proper."tram_id" from (SELECT distinct on(Poi."pid") Poi."pid" As Punt_id,Sg."id" as Tram_id, ST_Distance(Sg."the_geom",Poi."the_geom")  as dist FROM "Xarxa_Prova" as Sg,NecessaryPoints_'+Fitxer+' AS Poi ORDER BY  Poi."pid",ST_Distance(Sg."the_geom",Poi."the_geom"),Sg."id") tram_proper where NecessaryPoints_'+Fitxer+'."pid"=tram_proper."punt_id";\n'
         update += 'UPDATE NecessaryPoints_'+Fitxer+' SET fraction = ST_LineLocatePoint(e.the_geom, NecessaryPoints_'+Fitxer+'.the_geom),newPoint = ST_LineInterpolatePoint(e."the_geom", ST_LineLocatePoint(e."the_geom", NecessaryPoints_'+Fitxer+'."the_geom")) FROM "Xarxa_Prova" AS e WHERE NecessaryPoints_'+Fitxer+'."edge_id" = e."id";\n'
         try:
             cur.execute(update)
@@ -1538,6 +1580,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error UPDATE NecessaryPoints")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
             
         '''
@@ -1556,6 +1599,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error SELECT NecesaryPoints")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return 
         create = 'create local temp table "Resultat" as SELECT * FROM (\n'
         for x in range (0,len(vec)):
@@ -1586,6 +1630,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error SELECT CAMP NOM")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
             
         '''
@@ -1603,6 +1648,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error DROP TABLE 2")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         try:
@@ -1616,6 +1662,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error CREATE Resultat")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         '''
@@ -1634,6 +1681,7 @@ class CercaTrajectesEntitats:
                 QMessageBox.information(None, "Error", "Error DROP Table 1")
                 conn.rollback()
                 self.eliminaTaulesCalcul(Fitxer)
+                self.dlg.setEnabled(True)
                 return
         
         create = "CREATE local temp TABLE \"SegmentsFinals\" (\n"
@@ -1654,6 +1702,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error CREATE SegmentsFinals")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
             
         '''
@@ -1672,6 +1721,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error CREATE Resultat")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
             
         insert = ''
@@ -1692,6 +1742,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error INSERT SegmentsFinals")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
             
         '''
@@ -1710,6 +1761,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error SELECT SegmentsFinals")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
 
         update = ''
@@ -1733,6 +1785,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error UPDATE SegmentsFinals")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         '''
         #    6.3 Query per escollir i afegir el tros de tram que correspon a cada inici i final 
@@ -1751,6 +1804,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error SELECT SegmentsFinals")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         updateSegment = ''
         for x in range(len(vec)):
@@ -1771,6 +1825,7 @@ class CercaTrajectesEntitats:
                 QMessageBox.information(None, "Error", "Error SELECT TOUCH")
                 conn.rollback()
                 self.eliminaTaulesCalcul(Fitxer)
+                self.dlg.setEnabled(True)
                 return
             if edgeAnt != -1:   
                 if resposta[0][0]:
@@ -1799,6 +1854,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error UPDATE SegmentsFinals Geometries")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         '''
@@ -1818,6 +1874,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error ALTER and UPDATE Resultat Geometries")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
 
         '''
@@ -1835,6 +1892,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error ALTER and UPDATE Resultat Geometries")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
 
         
@@ -1852,6 +1910,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error getLimit")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
             select = 'select e."'+ nomCamp[0][0] +'" as NomEntitat, r.agg_cost as Cost, r.entitatID from "Resultat" r  join "' + self.dlg.comboCapaDesti.currentText() + '" e on r.entitatID = e.id where  r.edge = -1 order by 2 asc limit ' + str(limit) + ';'
@@ -1869,6 +1928,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error SELECT resultats")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
             
@@ -1911,6 +1971,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error CREATE trams")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
             
@@ -1929,6 +1990,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error a la connexio")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         '''
@@ -1950,6 +2012,7 @@ class CercaTrajectesEntitats:
             QMessageBox.information(None, "Error", "Error SELECT CAMP NOM Etiquetes")
             conn.rollback()
             self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
             return
         
         '''
