@@ -587,6 +587,7 @@ class CercaTrajectesEntitats:
         self.dlg.chk_Local.setChecked(True)
         self.dlg.chk_Local.setEnabled(True)
         self.dlg.tabWidget_Destino.setCurrentIndex(0)
+        self.dlg.setEnabled(True)
     
     def on_Change_ComboGraf(self, state):
         """
