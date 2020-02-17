@@ -78,7 +78,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.200214"
+Versio_modul="V_Q3.200217"
 nomBD1=""
 contra1=""
 host1=""
@@ -1131,7 +1131,6 @@ class CercaTrajectesEntitats:
         QApplication.processEvents()
         
         try:
-            print(CNB)
             sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
             cur.execute(sql_inici)
             coordenadas = cur.fetchall()
@@ -1205,9 +1204,7 @@ class CercaTrajectesEntitats:
         puntos_destino['OUTPUT'].startEditing()
         fields = puntos_destino['OUTPUT'].fields()
         for x in range(len(fields)):
-            print(fields[x].displayName())
             if('nom' in fields[x].displayName().lower()):
-                print('OK!!!!!')
                 puntos_destino['OUTPUT'].renameAttribute(x,'NomEntitat')
             elif(fields[x].displayName()=='id'):
                 puntos_destino['OUTPUT'].renameAttribute(x,'entitatid')
@@ -1215,10 +1212,6 @@ class CercaTrajectesEntitats:
         puntos_destino['OUTPUT'].addAttribute(QgsField('ordre', QVariant.Int))
         puntos_destino['OUTPUT'].commitChanges()
         
-        fields = puntos_destino['OUTPUT'].fields()
-        for x in range(len(fields)):
-            print(fields[x].displayName())
-            
                      
         
         features = puntos_destino['OUTPUT'].getFeatures()
@@ -1329,6 +1322,8 @@ class CercaTrajectesEntitats:
                 symbol.setColor(color)                          
                 
                 ranger = QgsRendererRange(min, max, symbol, label)
+                print(label)
+                print(ranger.label())
                 myRangeList.append(ranger)
                 gruix -= float(interval)
 
@@ -1338,7 +1333,8 @@ class CercaTrajectesEntitats:
             
             '''S'apliquen els estils a la capa'''
             renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
-            renderer.setLabelFormat(format,True)
+            renderer.setLabelFormat(format,False) #Si en algún momento hay problema con el texto de los símbolos mostrados en leyenda, podría estar relacionado con este booleano
+
             
             renderer.setOrderByEnabled(True)
             listOrder = []
@@ -1348,7 +1344,7 @@ class CercaTrajectesEntitats:
         
             vlayer.setRenderer(renderer)
             QApplication.processEvents()
-
+            
             
             QgsProject.instance().addMapLayer(vlayer,False)
             root = QgsProject.instance().layerTreeRoot()
@@ -2087,7 +2083,7 @@ class CercaTrajectesEntitats:
             
             '''S'apliquen els estils a la capa'''
             renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
-            renderer.setLabelFormat(format,True)
+            renderer.setLabelFormat(format,False) #Si en algún momento hay problema con el texto de los símbolos mostrados en leyenda, podría estar relacionado con este booleano
             vlayer.setRenderer(renderer)
             QApplication.processEvents()
 
