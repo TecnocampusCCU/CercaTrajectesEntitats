@@ -78,7 +78,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.200217"
+Versio_modul="V_Q3.200218"
 nomBD1=""
 contra1=""
 host1=""
@@ -1111,7 +1111,6 @@ class CercaTrajectesEntitats:
     def local(self,CNB, uri):
         global Fitxer
         
-        
         QApplication.processEvents()
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
             sql_punts = 'SELECT * FROM \"' + self.dlg.comboCapaDesti.currentText() + '\"'
@@ -1130,6 +1129,47 @@ class CercaTrajectesEntitats:
         QApplication.processEvents()
         start_lyr = QgsVectorLayer(uri.uri(False), "inici", "postgres")
         QApplication.processEvents()
+        
+        
+        '''
+        #  S'afegeix el punt d'origen a pantalla
+        
+        # Es prepara el titol de la capa que apareixerà a la llegenda
+        '''
+        titol=self.dlg.lbl_numpol.text()
+        titol2='Entitat d\'origen: '
+        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = start_lyr
+        QApplication.processEvents()
+        '''
+        # Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
+        '''
+        if vlayer.isValid():
+            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
+            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            """Es carrega el Shape a l'entorn del QGIS"""
+            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            '''S'afegeix el color a la nova entitat'''
+            symbol.setColor(QColor.fromRgb(50,250,250))
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            ''''S'afegeix la capa a la pantalla'''
+            iface.mapCanvas().refresh()
+            #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 3:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+            
+            
+            
+        '''Cálculo de los caminos más cortos'''
+        
         
         try:
             sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
@@ -1255,6 +1295,7 @@ class CercaTrajectesEntitats:
             self.dlg.taulaResultat.setItem(x, 0, QTableWidgetItem(str(feature['NomEntitat'])))
             self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(feature['agg_cost']))))
 
+
       
         '''Representación caminos de destino'''
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
@@ -1323,8 +1364,6 @@ class CercaTrajectesEntitats:
                 symbol.setColor(color)                          
                 
                 ranger = QgsRendererRange(min, max, symbol, label)
-                print(label)
-                print(ranger.label())
                 myRangeList.append(ranger)
                 gruix -= float(interval)
 
@@ -1429,40 +1468,7 @@ class CercaTrajectesEntitats:
         else:
             QMessageBox.information(None, "LAYER ERROR 2:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
             
-        '''
-        #  S'afegeix el punt d'origen a pantalla
         
-        # Es prepara el titol de la capa que apareixerà a la llegenda
-        '''
-        titol=self.dlg.lbl_numpol.text()
-        titol2='Entitat d\'origen: '
-        titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-        vlayer = start_lyr
-        QApplication.processEvents()
-        '''
-        # Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-        '''
-        if vlayer.isValid():
-            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-            """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-            symbols = vlayer.renderer().symbols(QgsRenderContext())
-            symbol=symbols[0]
-            '''S'afegeix el color a la nova entitat'''
-            symbol.setColor(QColor.fromRgb(50,250,250))
-            QgsProject.instance().addMapLayer(vlayer,False)
-            root = QgsProject.instance().layerTreeRoot()
-            myLayerNode=QgsLayerTreeLayer(vlayer)
-            root.insertChildNode(0,myLayerNode)
-            myLayerNode.setCustomProperty("showFeatureCount", False)
-            QApplication.processEvents()
-            ''''S'afegeix la capa a la pantalla'''
-            iface.mapCanvas().refresh()
-            #qgis.utils.iface.legendInterface().refreshLayerSymbology(vlayer)
-        else:
-            QMessageBox.information(None, "LAYER ERROR 3:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
                    
                    
                     
@@ -2248,6 +2254,7 @@ class CercaTrajectesEntitats:
             self.dlg.Progres.setVisible(False)
             self.dlg.lblEstatConn.setText('Connectat')
             self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+            self.dlg.setEnabled(True)
             
             
             
