@@ -58,6 +58,8 @@ from qgis.core import QgsTextBufferSettings
 from qgis.core import QgsVectorLayerSimpleLabeling
 from qgis.core import QgsWkbTypes
 from qgis.core import QgsVectorLayerExporter
+from qgis.core import QgsCoordinateReferenceSystem
+
 import psycopg2
 import unicodedata
 import datetime
@@ -66,6 +68,8 @@ from qgis.utils import iface
 from PyQt5.QtSql import *
 import datetime
 import time
+import qgis.utils
+import collections
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -78,7 +82,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.200218"
+Versio_modul="V_Q3.200519"
 nomBD1=""
 contra1=""
 host1=""
@@ -719,6 +723,28 @@ class CercaTrajectesEntitats:
         self.dlg.txt_nomCarrer.clear()
         itemSel = None
         
+    def comprobarValidez(self,vlayer,CRS):        
+        #processing.algorithmHelp("native:shortestpathpointtolayer")
+        epsg = CRS
+        
+        alg_params = {
+            'INPUT': vlayer,
+            'OPERATION': '',
+            'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:'+str(epsg)),
+            'OUTPUT': 'memory:'
+        }
+        layer_repro = processing.run('native:reprojectlayer', alg_params)
+
+        parameters= {'ERROR_OUTPUT' : 'memory:',
+                     #'IGNORE_RING_SELF_INTERSECTION' : False,
+                     'INPUT_LAYER' : layer_repro['OUTPUT'],
+                     'INVALID_OUTPUT' : 'memory:',
+                     'METHOD' : 1,
+                     'VALID_OUTPUT' : 'memory:'}
+        
+        result = processing.run('qgis:checkvalidity',parameters)
+        
+        return result['VALID_OUTPUT']
         
     def calculo_Local(self,network_lyr,CNB,uri2,start_point,end_lyr):        
         #processing.algorithmHelp("native:shortestpathpointtolayer")
@@ -921,6 +947,28 @@ class CercaTrajectesEntitats:
             if layers != None:
                 for layer in layers:
                     if layer.name() == self.dlg.comboLeyenda.currentText():
+                        try:
+                            sql_SRID="SELECT Find_SRID('public', 'ILLES', 'geom')"
+                            cur.execute(sql_SRID)
+                        except Exception as ex:
+                            self.dlg.setEnabled(True)
+                            print ("ERROR SELECT SRID ILLES")
+                            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                            message = template.format(type(ex).__name__, ex.args)
+                            print (message)
+                            QMessageBox.information(None, "Error", "ERROR SELECT SRID ILLES")
+                            conn.rollback()
+                            self.eliminaTaulesCalcul(Fitxer)
+                
+                            self.bar.clearWidgets()
+                            self.dlg.Progres.setValue(0)
+                            self.dlg.Progres.setVisible(False)
+                            self.dlg.lblEstatConn.setText('Connectat')
+                            self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #7fff7f')
+                            return
+                        auxlist = cur.fetchall()
+                        Valor_SRID=auxlist[0][0]
+                        layer = self.comprobarValidez(layer,Valor_SRID)
                         error = QgsVectorLayerExporter.exportLayer(layer, 'table="public"."LayerExportat'+Fitxer+'" (geom) '+uri.connectionInfo(), "postgres", layer.crs(), False)
                         if error[0] != 0:
                             iface.messageBar().pushMessage(u'Error', error[1])
@@ -993,9 +1041,9 @@ class CercaTrajectesEntitats:
                         except Exception as ex:
                             print("ERROR select LayerExportat")
                             template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-                            message = template.format(type(ex).__name__, ex.args)
+                            Errormessage = template.format(type(ex).__name__, ex.args)
                             print (message)
-                            QMessageBox.information(None, "Error", errorMessage)
+                            QMessageBox.information(None, "Error", ErrorMessage)
                             conn.rollback()
                             self.eliminaTaulesCalcul(Fitxer)
                 
@@ -1147,7 +1195,14 @@ class CercaTrajectesEntitats:
         if vlayer.isValid():
             Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31000):
+                save_options = QgsVectorFileWriter.SaveVectorOptions()
+                save_options.driverName = "ESRI Shapefile"
+                save_options.fileEncoding = "UTF-8"
+                transform_context = QgsProject.instance().transformContext()
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+            else:
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
             vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             symbols = vlayer.renderer().symbols(QgsRenderContext())
@@ -1419,8 +1474,18 @@ class CercaTrajectesEntitats:
         if vlayer.isValid():
             Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
+            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31000):
+                save_options = QgsVectorFileWriter.SaveVectorOptions()
+                save_options.driverName = "ESRI Shapefile"
+                #save_options.fileEncoding = "UTF-8"
+                save_options.fileEncoding = "System"
+                transform_context = QgsProject.instance().transformContext()
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+            else:
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
+            #vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             #vlayer.setLayerTransparency(50)
             symbols = vlayer.renderer().symbols(QgsRenderContext())
@@ -1955,7 +2020,7 @@ class CercaTrajectesEntitats:
             if x < len(vec) and x >= 1:
                 createTrams += 'UNION\n'
                 
-            createTrams += 'select entitatid, \'' + str(vec[x][0].replace("'","''")) +'\' as "NomEntitatDesti" ,'+str(round(vec[x][1]))+' as agg_cost, ST_Union(newedge) as the_geom from "Resultat" where entitatid = '+str(vec[x][2])+' group by entitatid\n'
+            createTrams += 'select entitatid, \'' + str(vec[x][0].replace("'","''")) +'\' as "NomEntitatDesti" ,'+str(round(vec[x][1],rnd))+' as agg_cost, ST_Union(newedge) as the_geom from "Resultat" where entitatid = '+str(vec[x][2])+' group by entitatid\n'
         
         createTrams += ")total order by agg_cost asc;"
         QApplication.processEvents()
@@ -2035,7 +2100,14 @@ class CercaTrajectesEntitats:
         if vlayer.isValid():
             Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31000):
+                save_options = QgsVectorFileWriter.SaveVectorOptions()
+                save_options.driverName = "ESRI Shapefile"
+                save_options.fileEncoding = "UTF-8"
+                transform_context = QgsProject.instance().transformContext()
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp",transform_context,save_options)
+            else:
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
             vlayer = QgsVectorLayer(os.environ['TMP']+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
 
@@ -2133,7 +2205,15 @@ class CercaTrajectesEntitats:
         if vlayer.isValid():
             Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
+            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31000):
+                save_options = QgsVectorFileWriter.SaveVectorOptions()
+                save_options.driverName = "ESRI Shapefile"
+                save_options.fileEncoding = "UTF-8"
+                transform_context = QgsProject.instance().transformContext()
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+            else:
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
             vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             #vlayer.setLayerTransparency(50)
@@ -2205,7 +2285,14 @@ class CercaTrajectesEntitats:
         if vlayer.isValid():
             Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31000):
+                save_options = QgsVectorFileWriter.SaveVectorOptions()
+                save_options.driverName = "ESRI Shapefile"
+                save_options.fileEncoding = "UTF-8"
+                transform_context = QgsProject.instance().transformContext()
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+            else:
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
             vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             symbols = vlayer.renderer().symbols(QgsRenderContext())
