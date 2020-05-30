@@ -59,6 +59,8 @@ from qgis.core import QgsVectorLayerSimpleLabeling
 from qgis.core import QgsWkbTypes
 from qgis.core import QgsVectorLayerExporter
 from qgis.core import QgsCoordinateReferenceSystem
+from qgis.core import QgsFeature
+from qgis.core import QgsGeometry
 
 import psycopg2
 import unicodedata
@@ -82,7 +84,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.200519"
+Versio_modul="V_Q3.200530"
 nomBD1=""
 contra1=""
 host1=""
@@ -553,8 +555,8 @@ class CercaTrajectesEntitats:
         else:
             self.dlg.chk_CostNusos.setEnabled(True)
             lbl_Cost = 'Temps (min)'
-            self.dlg.chk_Local.setEnabled(False)
-            self.dlg.chk_Local.setChecked(False)
+            self.dlg.chk_Local.setEnabled(True)
+            self.dlg.chk_Local.setChecked(True)
         
     def estatInicial(self):
         '''
@@ -748,21 +750,435 @@ class CercaTrajectesEntitats:
         
     def calculo_Local(self,network_lyr,CNB,uri2,start_point,end_lyr):        
         #processing.algorithmHelp("native:shortestpathpointtolayer")
-        parameters= {'INPUT':network_lyr,
-                     'STRATEGY':0, 
-                     'DIRECTION_FIELD': '',
-                     'VALUE_FORWARD': '',
-                     'VALUE_BACKWARD': '',
-                     'VALUE_BOTH': '',
-                     'DEFAULT_DIRECTION':2,
-                     'SPEED_FIELD': '',
-                     'DEFAULT_SPEED':1,
-                     'TOLERANCE':0,
-                     'START_POINT':start_point,
-                     'END_POINTS':end_lyr,
-                     'OUTPUT':'memory:'}
+        if self.dlg.comboCost.currentText() != 'Distancia':
+            network_lyr = self.calcul_graf3(network_lyr,start_point,uri2,end_lyr)
+            
+            parameters= {'INPUT':network_lyr,
+                         'STRATEGY':1, 
+                         'DIRECTION_FIELD': 'DIRECCIO',
+                         'VALUE_FORWARD': 'D',
+                         'VALUE_BACKWARD': '',
+                         'VALUE_BOTH': '',
+                         'DEFAULT_DIRECTION':0,
+                         'SPEED_FIELD': 'VEL_KMH',
+                         'DEFAULT_SPEED':50,
+                         'TOLERANCE':0.1,
+                         'START_POINT':start_point,
+                         'END_POINTS':end_lyr,
+                         'OUTPUT':'memory:'}
         
-        return processing.run('native:shortestpathpointtolayer',parameters)
+        else:
+            parameters= {'INPUT':network_lyr,
+                         'STRATEGY':0, 
+                         'DIRECTION_FIELD': '',
+                         'VALUE_FORWARD': '',
+                         'VALUE_BACKWARD': '',
+                         'VALUE_BOTH': '',
+                         'DEFAULT_DIRECTION':2,
+                         'SPEED_FIELD': '',
+                         'DEFAULT_SPEED':1,
+                         'TOLERANCE':0,
+                         'START_POINT':start_point,
+                         'END_POINTS':end_lyr,
+                         'OUTPUT':'memory:'}
+        Result=processing.run('native:shortestpathpointtolayer',parameters)
+
+        if self.dlg.comboCost.currentText() != 'Distancia':
+            # Passo el agg_cost de hores a minuts
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'cost',
+                'FIELD_PRECISION': 1,
+                'FIELD_TYPE': 0,
+                'FORMULA': 'round(\"cost\"*60,1)',
+                'INPUT': Result['OUTPUT'],
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+            }
+            return processing.run('qgis:fieldcalculator', alg_params)        
+        else:
+            return Result
+    def troba_distancia(self,linea,punt):
+        distancia=linea.geometry().lineLocatePoint(punt.geometry())
+        return distancia
+    def troba_posicio(self,id,llista_id):
+        resultat=[]
+        for j,x in enumerate(llista_id):
+            #print (x)
+            if id==x:
+                #print ("id:"+str(id))
+                resultat.append(j)
+        return resultat
+        
+    def calcula_distancies(self,linea,posicio,punts):
+        resultat=[]
+        for i in range(len(posicio)):
+            #print (posicio[i])
+            resultat.append([posicio[i],self.troba_distancia(linea,punts[posicio[i]])])
+        resultat=sorted(resultat, key=lambda x: x[1])
+        return resultat
+    
+    def Calcula_VEL_KMH(self,xarxa,crs,uri):
+         # Invertir dirección de línea
+        alg_params = {
+        'INPUT': xarxa,
+        'OUTPUT': 'memory:'
+        }
+        outputs={}
+        outputs['InvertirDireccinDeLnea'] = processing.run('native:reverselinedirection', alg_params)
+        
+        #True perque sempre es farà servir el cost invers
+        if (True): #(self.dlg.chk_CostInvers.isChecked()):
+
+            # VEL_PS=0
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VELOCITAT_PS',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '0*0',
+                'INPUT': outputs['InvertirDireccinDeLnea']['OUTPUT'],
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Vel_ps0'] = processing.run('qgis:fieldcalculator', alg_params)
+    
+            # VEL_PS_INV=0
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VELOCITAT_PS_INV',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '0*0',
+                'INPUT': xarxa,
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Vel_ps_inv0'] = processing.run('qgis:fieldcalculator', alg_params)
+        
+           # CREACIO_VEL_KMH_INV
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VEL_KMH',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '\"VELOCITAT_PS_INV\"*60/1000',
+                'INPUT': outputs['Vel_ps0']['OUTPUT'],
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Creacio_vel_kmh_inv'] = processing.run('qgis:fieldcalculator', alg_params)
+        
+            # CREACIO_VEL_KMH_DIREC
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VEL_KMH',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': 'VELOCITAT_PS*60/1000',
+                'INPUT': outputs['Vel_ps_inv0']['OUTPUT'],
+                'NEW_FIELD': True,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Creacio_vel_kmh_direc'] = processing.run('qgis:fieldcalculator', alg_params)
+                    
+        else:
+            # VEL_PS=0
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VELOCITAT_PS_INV',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '0*0',
+                'INPUT': outputs['InvertirDireccinDeLnea']['OUTPUT'],
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Vel_ps0'] = processing.run('qgis:fieldcalculator', alg_params)
+    
+            # VEL_PS_INV=0
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VELOCITAT_PS_INV',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '0*0',
+                'INPUT': xarxa,
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Vel_ps_inv0'] = processing.run('qgis:fieldcalculator', alg_params)
+        
+           # CREACIO_VEL_KMH_INV
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VEL_KMH',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '\"VELOCITAT_PS\"*60/1000',
+                'INPUT': outputs['Vel_ps0']['OUTPUT'],
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Creacio_vel_kmh_inv'] = processing.run('qgis:fieldcalculator', alg_params)
+        
+            # CREACIO_VEL_KMH_DIREC
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VEL_KMH',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': 'VELOCITAT_PS*60/1000',
+                'INPUT': outputs['Vel_ps_inv0']['OUTPUT'],
+                'NEW_FIELD': True,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Creacio_vel_kmh_direc'] = processing.run('qgis:fieldcalculator', alg_params)
+        
+        # Unir capas vectoriales
+        alg_params = {
+            'CRS': QgsCoordinateReferenceSystem('EPSG:'+str(crs)),
+            'LAYERS': [outputs['Creacio_vel_kmh_direc']['OUTPUT'],outputs['Creacio_vel_kmh_inv']['OUTPUT']],
+            'OUTPUT': 'memory:'
+        }
+        outputs['UnirCapasVectoriales'] = processing.run('native:mergevectorlayers', alg_params)
+    
+        # DIRECCIO
+        alg_params = {
+            'FIELD_LENGTH': 10,
+            'FIELD_NAME': 'DIRECCIO',
+            'FIELD_PRECISION': 3,
+            'FIELD_TYPE': 2,
+            'FORMULA': '\'D\'',
+            'INPUT': outputs['UnirCapasVectoriales']['OUTPUT'],
+            'NEW_FIELD': True,
+            'OUTPUT': 'memory:'
+        }
+        outputs['Direccio'] = processing.run('qgis:fieldcalculator', alg_params)
+
+        if (self.dlg.chk_CostNusos.isChecked()):
+            # CREACIO_L_TRAM_TEMP
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'L_TRAM_TEMP',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '$length',
+                'INPUT': outputs['Direccio']['OUTPUT'],
+                'NEW_FIELD': True,
+                'OUTPUT': 'memory:'
+            }
+            outputs['Direccio'] = processing.run('qgis:fieldcalculator', alg_params)        
+        return outputs['Direccio']['OUTPUT']
+                
+        #print (outputs)
+    
+    #def calcul_graf3(self,sql_punts,sql_xarxa,uri2):
+    def calcul_graf3(self,network_lyr,start_point,uri2,punts_finals):
+        #               *****************************************************************************************************************
+        #               INICI CARREGA DE LES ILLES, PARCELES O PORTALS QUE QUEDEN AFECTATS PEL BUFFER DEL GRAF 
+        #               *****************************************************************************************************************
+        #                uri.setDataSource("","("+sql_total+")","geom","","id")
+        global Fitxer
+
+        #if (punts_lyr.isValid() and network_lyr.isValid()):
+        #************************************************************************************
+        #************************************************************************************
+        outputs = {}
+        epsg = network_lyr.crs().postgisSrid()
+        '''
+        alg_params = {
+            'INPUT': start_point,
+            'OUTPUT': 'memory:'
+        }
+        
+        punt_reproy = processing.run('native:pointtolayer', alg_params)  
+        punts_lyr=punt_reproy['OUTPUT']      
+        '''
+        
+        punts_lyr = QgsVectorLayer("Point?crs=epsg:" + str(epsg), "Punt", "memory")
+        # add a feature
+        fet = QgsFeature() #QgsGeometry.fromPointXY(minDistPoint)
+        coord=start_point.split(", ")
+
+        #print(coord[1])
+        fet.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(float(coord[0]),float(coord[1]))))        
+        punts_lyr.dataProvider().addFeature(fet)
+        punts_finals_features=punts_finals.getFeatures()
+
+        #Afegir els punts_finals a la entitat punts_lyr per tallar el graf.
+        for punt_final in punts_finals_features:
+            geom = punt_final.geometry()
+            fet.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(float(QgsPointXY(geom.asPoint()).x()),float(QgsPointXY(geom.asPoint()).y()))))        
+            punts_lyr.dataProvider().addFeature(fet)
+        
+        
+        punts_lyr.updateExtents()
+        #QgsProject.instance().addMapLayer(punts_lyr)
+        
+        
+        alg_params = {
+            'INPUT': punts_lyr,
+            'OPERATION': '',
+            'TARGET_CRS': QgsCoordinateReferenceSystem('EPSG:'+str(epsg)),
+            'OUTPUT': 'memory:'
+        }
+        outputs['ReproyectarCapa'] = processing.run('native:reprojectlayer', alg_params)
+        
+        
+        p_lyr = outputs['ReproyectarCapa']['OUTPUT']
+        graf = network_lyr
+        
+
+        l_lyr=self.Calcula_VEL_KMH(graf,epsg,uri2)
+        
+        #QgsProject.instance().addMapLayer(l_lyr)
+        
+
+        
+        lines_features = [ line_feature for line_feature in l_lyr.getFeatures() ] 
+        points_features = [ point_feature for point_feature in p_lyr.getFeatures() ]
+        vl = QgsVectorLayer("LineString?crs=epsg:" + str(epsg), "Lineas2", "memory")
+        pr = vl.dataProvider()
+        lista=[]
+        for field in lines_features[0].fields():
+            lista.append(field)
+        
+        #print (lista)
+        pr.addAttributes(lista)
+            
+        vl.updateFields()
+        feats = []
+        puntos=[]
+        idx_lines=[]
+        punts_id=[]
+        Trams0_id=[]
+        Trams1_id=[]
+        Trams_id=[]
+        repetits=[]
+        for p in points_features:
+            lineas=[]
+            for l in lines_features:
+                lineas.append([l.geometry().closestSegmentWithContext( p.geometry().asPoint() )])
+            punts_id.append(min(lineas)[0][1])
+            Trams0_id.append(lineas.index(sorted(lineas)[0])+1)
+            Trams1_id.append(lineas.index(sorted(lineas)[1])+1)
+        Trams_id.append([0,Trams0_id])
+        Trams_id.append([1,Trams1_id])
+        #print(Trams0_id)
+        #print(Trams1_id)
+        #print(Trams_id)
+        #print(Trams_id[0][1])
+        #print(Trams_id[1][1])
+        
+        repetits.append([x for x, y in collections.Counter(Trams_id[0][1]).items() if y > 1])
+        repetits.append([x for x, y in collections.Counter(Trams_id[1][1]).items() if y > 1])
+        #print(repetits)
+        
+        trams_fets=[]
+        feat_temp = QgsFeature()
+        for index_punt,p in enumerate(points_features):
+            #print(index_punt)
+            #print (repetits)
+            for i in range(2):
+                linea_cut=lines_features[Trams_id[i][1][index_punt]-1]
+                if ([linea_cut.id()]) not in repetits:
+                    idx_lines.append(linea_cut.id())
+        
+                    start=0
+                    distancia=round(self.troba_distancia(linea_cut,p),3)
+                    longitud=round(linea_cut.geometry().length(),3)
+                    lp=linea_cut.geometry().constGet()
+                    newgeom=QgsGeometry(lp.curveSubstring(start,distancia))
+                    #print(newgeom)
+                    f=QgsFeature()
+                    f.setAttributes(linea_cut.attributes())
+                    f.setGeometry(newgeom)
+                    feats.append(f)
+        
+                    newgeom=QgsGeometry(lp.curveSubstring(distancia,longitud))
+                    #print(newgeom)
+                    f=QgsFeature()
+                    f.setAttributes(linea_cut.attributes())
+                    f.setGeometry(newgeom)
+                    feats.append(f)
+                else:
+                    #print("REPE")
+                    #break
+                    id_tram_Read=linea_cut.id()
+                    if id_tram_Read not in trams_fets:
+                        trams_fets.append(id_tram_Read)
+        
+                        idx_lines.append(id_tram_Read)
+                        posicio=self.troba_posicio(linea_cut.id(),Trams_id[i][1])
+                        llista_dist=self.calcula_distancies(linea_cut,posicio,points_features)
+                        #En llista_dist estan ordenat de menor distancia a major distancia
+                        
+                        #break
+                        start=0
+                        #distancia=troba_distancia(linea_cut,p)
+                        longitud=round(linea_cut.geometry().length(),3)
+                        #print (longitud)
+                        lp=linea_cut.geometry().constGet()
+                        for x in range(len(posicio)):
+                            if x==0:
+                                start=0
+                            else:
+                                start=round(llista_dist[x-1][1],3)
+                            
+                            distancia=round(llista_dist[x][1],3)
+        
+                            newgeom=QgsGeometry(lp.curveSubstring(start,distancia))
+                            f=QgsFeature()
+                            f.setAttributes(linea_cut.attributes())
+                            f.setGeometry(newgeom)
+                            feats.append(f)
+        
+                        newgeom=QgsGeometry(lp.curveSubstring(distancia,longitud))
+                        f=QgsFeature()
+                        f.setAttributes(linea_cut.attributes())
+                        f.setGeometry(newgeom)
+                        feats.append(f)
+                        
+                    #for x in range(Trams_id[i][1].count(lines_features[Trams_id[i][1][p.id()-1]-1].id())):
+                        
+            minDistPoint = punts_id[index_punt]
+            punto = QgsFeature()
+            punto.setGeometry(QgsGeometry.fromPointXY(minDistPoint))
+        
+            punto.setAttributes([points_features.index(p),123])
+            puntos.append(punto)
+            #print (trams_fets)
+        for current,feat_item in enumerate(lines_features):
+            if (current+1) not in idx_lines:
+                feats.append(feat_item)
+        pr.addFeatures(feats)
+        vl.updateExtents()
+        
+        if (self.dlg.chk_CostNusos.isChecked()):
+
+            # AFEGIR COST DE SEMAFORS A VEL_KMH
+            
+            alg_params = {
+                'FIELD_LENGTH': 10,
+                'FIELD_NAME': 'VEL_KMH',
+                'FIELD_PRECISION': 9,
+                'FIELD_TYPE': 0,
+                'FORMULA': '($length /(($length/((\"VELOCITAT_PS\"+\"VELOCITAT_PS_INV\")))+(\"Cost_Total_Semafor_Tram\"*($length/\"L_TRAM_TEMP\"))))*60/1000',
+                'INPUT': vl,
+                'NEW_FIELD': False,
+                'OUTPUT': 'memory:'
+                #'OUTPUT': 'postgres: table="public"."testpep" (geom) '+uri.connectionInfo()
+            }
+            outputs['vel_kmh_amb_sem'] = processing.run('qgis:fieldcalculator', alg_params)
+            layer=outputs['vel_kmh_amb_sem']['OUTPUT']
+        else:
+            layer=vl
+        
+        
+        return layer
+    
+
         
     def save_vlayer(self,end_lyr):
         end_lyr.selectAll()
@@ -1068,6 +1484,7 @@ class CercaTrajectesEntitats:
         if self.dlg.comboCost.currentText() == 'Distancia':
             sql_xarxa += 'update "Xarxa_Prova" set "cost"="LONGITUD_SEGMENT", "reverse_cost"="LONGITUD_SEGMENT";'
         else:
+            sql_xarxa += 'update "Xarxa_Prova" set "cost"=("LONGITUD_SEGMENT")/("VELOCITAT_PS"), "reverse_cost"=("LONGITUD_SEGMENT")/("VELOCITAT_PS_INV");'
             if (self.dlg.chk_CostNusos.isChecked()):
                 """Es suma al camp 'cost' i a 'reverse_cost' el valor dels semafors sempre i quan estigui la opció marcada"""
                 sql_xarxa +='UPDATE "Xarxa_Prova" set "cost"="cost"+(\"Cost_Total_Semafor_Tram\"), \"reverse_cost\"=\"reverse_cost\"+(\"Cost_Total_Semafor_Tram\");\n'
@@ -1227,7 +1644,10 @@ class CercaTrajectesEntitats:
         
         
         try:
-            sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+            #sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+            sql_inici = 'SELECT ST_X(geom), ST_Y(geom) FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+            # ST_X(geom), ST_Y(geom)
+            
             cur.execute(sql_inici)
             coordenadas = cur.fetchall()
             start_point = ((str(coordenadas[0]))[1:-1])
@@ -1250,9 +1670,10 @@ class CercaTrajectesEntitats:
         QApplication.processEvents()
         
         resultado = self.calculo_Local(network_lyr,CNB,uri,start_point,end_lyr)
-        
+
         
         '''Borrar tramos sobrantes'''
+        
         features = resultado['OUTPUT'].getFeatures(QgsFeatureRequest().addOrderBy('cost',True))
         try:
             limit = self.getLimit()
@@ -1293,9 +1714,11 @@ class CercaTrajectesEntitats:
                 featureOrdreList.append(feature.id())
             x = x+1
         resultado['OUTPUT'].commitChanges()
+        
   
   
         '''Borrar puntos sobrantes'''
+        
         puntos_destino = self.save_vlayer(end_lyr) 
         puntos_destino['OUTPUT'].startEditing()
         fields = puntos_destino['OUTPUT'].fields()
@@ -1321,6 +1744,7 @@ class CercaTrajectesEntitats:
         
         
         '''Borrar atributos sobrantes del resultado'''
+        
         resultado['OUTPUT'].startEditing()
         indexAttributesToDelete = []
         for x in range(len(resultado['OUTPUT'].attributeList())):
@@ -1328,9 +1752,11 @@ class CercaTrajectesEntitats:
                 indexAttributesToDelete.append(x)
         resultado['OUTPUT'].deleteAttributes(indexAttributesToDelete)
         resultado['OUTPUT'].commitChanges()
+        
 
         
         '''Borrar atributos sobrantes de los destinos'''
+        
         puntos_destino['OUTPUT'].startEditing()
         indexAttributesToDelete.clear()
         for x in range(len(puntos_destino['OUTPUT'].attributeList())):
@@ -1341,6 +1767,7 @@ class CercaTrajectesEntitats:
         
         
         '''Representación en taulaResultat'''
+        
         rowCount = self.dlg.taulaResultat.rowCount()
         self.dlg.taulaResultat.setColumnCount(2)
         self.dlg.taulaResultat.setHorizontalHeaderLabels(['Entitat', lbl_Cost])
@@ -1348,16 +1775,20 @@ class CercaTrajectesEntitats:
             self.dlg.taulaResultat.insertRow(x)
             feature = resultado['OUTPUT'].getFeature(featureOrdreList[x])
             self.dlg.taulaResultat.setItem(x, 0, QTableWidgetItem(str(feature['NomEntitat'])))
-            self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(feature['agg_cost']))))
+            if self.dlg.comboCost.currentText() == 'Distancia':
+                self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(feature['agg_cost']))))
+            else:
+                self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round((feature['agg_cost']),1))))
 
-
+        
       
         '''Representación caminos de destino'''
+        
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
             titol=self.dlg.comboCapaDesti.currentText()
         else:
             titol=self.dlg.comboLeyenda.currentText()
-        
+
         titol2='Camins més propers a '
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         #vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
@@ -1669,7 +2100,8 @@ class CercaTrajectesEntitats:
             self.eliminaTaulesCalcul(Fitxer)
             self.dlg.setEnabled(True)
             return 
-        create = 'create local temp table "Resultat" as SELECT * FROM (\n'
+        #create = 'create local temp table "Resultat" as SELECT * FROM (\n'
+        create = 'create table "Resultat" as SELECT * FROM (\n'
         for x in range (0,len(vec)):
             if x < len(vec) and x >= 2:
                 create += 'UNION\n'
@@ -1962,9 +2394,29 @@ class CercaTrajectesEntitats:
             self.eliminaTaulesCalcul(Fitxer)
             self.dlg.setEnabled(True)
             return
-
         
+        uri = QgsDataSourceUri()
+        try:
+            uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
+        except Exception as ex:
+            print ("Error a la connexio")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error a la connexio")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
+            return
         '''
+        sql_resultat = 'SELECT * FROM  "Resultat";' 
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_resultat+")","newedge","","id")
+        QApplication.processEvents()
+        temp_lyr = QgsVectorLayer(uri.uri(False), "inici", "postgres")
+        QgsProject.instance().addMapLayer(temp_lyr)
+        
+        
         #    9. Seleccio dels N-camins més proxims al domicili indicat per tal de presentar els resultats
         #    en el quadre de la interficie del modul
         '''
@@ -2094,6 +2546,8 @@ class CercaTrajectesEntitats:
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
         QApplication.processEvents()
+
+       
         '''
         #   11.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
         '''
@@ -2322,10 +2776,10 @@ class CercaTrajectesEntitats:
         global conn
         try:
             cur.execute('DROP TABLE IF EXISTS "Xarxa_Prova";\n')
-            cur.execute('DROP TABLE IF EXISTS "Resultat";\n') 
+            #cur.execute('DROP TABLE IF EXISTS "Resultat";\n') 
             cur.execute('DROP TABLE IF EXISTS checkNum;\n')
             cur.execute('DROP TABLE IF EXISTS "TramsNous_'+Fitxer+'";\n')
-            cur.execute('DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';\n')
+            #cur.execute('DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';\n')
             cur.execute('DROP TABLE IF EXISTS "SegmentsFinals";\n')
             cur.execute('DROP TABLE IF EXISTS "LayerExportat'+Fitxer+'";\n')
             conn.commit()
