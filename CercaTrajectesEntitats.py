@@ -98,7 +98,7 @@ progress=None
 aux=False
 itemSel=None
 lbl_Cost = ''
-
+TEMPORARY_PATH=""
 
 class CercaTrajectesEntitats:
     """QGIS Plugin Implementation."""
@@ -567,6 +567,7 @@ class CercaTrajectesEntitats:
         global Versio_modul
         global itemSel
         global lbl_Cost
+        global TEMPORARY_PATH
         aux = False
         itemSel = None
         self.dlg.comboLletra.clear()
@@ -594,6 +595,10 @@ class CercaTrajectesEntitats:
         self.dlg.chk_Local.setEnabled(True)
         self.dlg.tabWidget_Destino.setCurrentIndex(0)
         self.dlg.setEnabled(True)
+        if (os.name=='nt'):
+            TEMPORARY_PATH=os.environ['TMP']
+        else:
+            TEMPORARY_PATH=os.environ['TMPDIR']
     
     def on_Change_ComboGraf(self, state):
         """
@@ -1575,7 +1580,7 @@ class CercaTrajectesEntitats:
         
     def local(self,CNB, uri):
         global Fitxer
-        
+        global TEMPORARY_PATH
         QApplication.processEvents()
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
             sql_punts = 'SELECT * FROM \"' + self.dlg.comboCapaDesti.currentText() + '\"'
@@ -1617,11 +1622,11 @@ class CercaTrajectesEntitats:
                 save_options.driverName = "ESRI Shapefile"
                 save_options.fileEncoding = "UTF-8"
                 transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
             else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             '''S'afegeix el color a la nova entitat'''
@@ -1802,9 +1807,9 @@ class CercaTrajectesEntitats:
             #QgsSettings().setValue('/Processing/encoding', 'utf-8') # set uft8
             Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
             """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+            #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
-            #vlayer = QgsVectorLayer(os.environ['TMP']+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            #vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
 
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
@@ -1911,13 +1916,13 @@ class CercaTrajectesEntitats:
                 #save_options.fileEncoding = "UTF-8"
                 save_options.fileEncoding = "System"
                 transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
             else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
-            #vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            #vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             #vlayer.setLayerTransparency(50)
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
@@ -2559,11 +2564,11 @@ class CercaTrajectesEntitats:
                 save_options.driverName = "ESRI Shapefile"
                 save_options.fileEncoding = "UTF-8"
                 transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp",transform_context,save_options)
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Camins_"+Cobertura+".shp",transform_context,save_options)
             else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(os.environ['TMP']+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
 
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
@@ -2664,12 +2669,12 @@ class CercaTrajectesEntitats:
                 save_options.driverName = "ESRI Shapefile"
                 save_options.fileEncoding = "UTF-8"
                 transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
             else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             #vlayer.setLayerTransparency(50)
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
@@ -2744,11 +2749,11 @@ class CercaTrajectesEntitats:
                 save_options.driverName = "ESRI Shapefile"
                 save_options.fileEncoding = "UTF-8"
                 transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
+                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
             else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, os.environ['TMP']+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
+                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
             """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(os.environ['TMP']+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             '''S'afegeix el color a la nova entitat'''
