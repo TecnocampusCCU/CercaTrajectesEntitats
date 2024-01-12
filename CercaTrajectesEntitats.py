@@ -24,7 +24,8 @@
 
 import sys
 import os
-import processing
+# import processing
+from qgis import processing
 from os.path import expanduser
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -84,7 +85,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.210617"
+Versio_modul="V_Q3.240112"
 nomBD1=""
 contra1=""
 host1=""
@@ -523,7 +524,8 @@ class CercaTrajectesEntitats:
         for elem in llista:
             try:
                 if isinstance(elem, tuple):
-                    item = QStandardItem(unicode(elem[0]))
+                    item = QStandardItem(str(elem[0]))
+                    #item = QStandardItem(unicode(elem[0]))
                 else:
                     item = QStandardItem(str(elem))
             except TypeError:
@@ -1611,29 +1613,21 @@ class CercaTrajectesEntitats:
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         vlayer = start_lyr
         QApplication.processEvents()
-        '''
-        # Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-        '''
+        
         if vlayer.isValid():
-            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31004):
-                save_options = QgsVectorFileWriter.SaveVectorOptions()
-                save_options.driverName = "ESRI Shapefile"
-                save_options.fileEncoding = "UTF-8"
-                transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
-            else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-            """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            crs = vlayer.dataProvider().sourceCrs()
+            vlayer_temp = QgsVectorLayer("Point", titol3.decode('utf8'), "memory")
+            vlayer_temp.setCrs(crs)
+            vlayer_temp.dataProvider().addAttributes(vlayer.fields())
+            vlayer_temp.updateFields()
+            vlayer_temp.dataProvider().addFeatures(vlayer.getFeatures())
+            symbols = vlayer_temp.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             '''S'afegeix el color a la nova entitat'''
             symbol.setColor(QColor.fromRgb(50,250,250))
-            QgsProject.instance().addMapLayer(vlayer,False)
+            QgsProject.instance().addMapLayer(vlayer_temp,False)
             root = QgsProject.instance().layerTreeRoot()
-            myLayerNode=QgsLayerTreeLayer(vlayer)
+            myLayerNode=QgsLayerTreeLayer(vlayer_temp)
             root.insertChildNode(0,myLayerNode)
             myLayerNode.setCustomProperty("showFeatureCount", False)
             QApplication.processEvents()
@@ -1796,21 +1790,11 @@ class CercaTrajectesEntitats:
 
         titol2='Camins més propers a '
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
-        #vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
-        #vlayer = QgsVectorLayer(resultado['OUTPUT'].source(), titol3.decode('utf8'), resultado['OUTPUT'].providerType())
         vlayer = resultado['OUTPUT']
         vlayer.setName(titol3.decode('utf8'))
         QApplication.processEvents()
         
         if(vlayer.isValid):
-            #orgEncoding=QgsSettings().value('/Processing/encoding') # save setting
-            #QgsSettings().setValue('/Processing/encoding', 'utf-8') # set uft8
-            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-            """Es carrega el Shape a l'entorn del QGIS"""
-            #vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             
@@ -1904,26 +1888,8 @@ class CercaTrajectesEntitats:
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         vlayer = puntos_destino['OUTPUT']
         QApplication.processEvents()
-        '''
-        #  Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-        '''
+
         if vlayer.isValid():
-            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31004):
-                save_options = QgsVectorFileWriter.SaveVectorOptions()
-                save_options.driverName = "ESRI Shapefile"
-                #save_options.fileEncoding = "UTF-8"
-                save_options.fileEncoding = "System"
-                transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
-            else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
-            """Es carrega el Shape a l'entorn del QGIS"""
-            #vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-            #vlayer.setLayerTransparency(50)
             symbols = vlayer.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             symbol.setColor(QColor.fromRgb(250,50,250))
@@ -1934,6 +1900,7 @@ class CercaTrajectesEntitats:
             
             text_format.setFont(QFont("Arial", 16))
             text_format.setSize(16)
+            vlayer.setName(titol3.decode('utf8'))
             
             buffer_settings = QgsTextBufferSettings()
             buffer_settings.setEnabled(True)
@@ -1945,7 +1912,7 @@ class CercaTrajectesEntitats:
             
             layer_settings.isExpression = True
             layer_settings.fieldName = "concat( ordre,'. ',NomEntitat)"
-            layer_settings.placement = 2
+            layer_settings.placement = QgsPalLayerSettings.AroundPoint # Poso AroundPoint privisonalment perque sé que funciona, abans hi havia escrit un 2
             layer_settings.scaleVisibility = True
             layer_settings.minimumScale = 20000
             layer_settings.maximumScale = 3000
@@ -2317,7 +2284,14 @@ class CercaTrajectesEntitats:
             fraction = vec[x][3]
             edgeAnt = vec[x][2]
             edge = vec[x][1]
-            selectTouch = 'SELECT ST_Touches((select ST_Line_Substring("Xarxa_Prova"."the_geom",0,'+str(fraction)+') as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select the_geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
+
+            sqlVersio = "SELECT extversion FROM pg_extension WHERE extname = 'postgis';"
+            cur.execute(sqlVersio)
+            versio = cur.fetchall()[0][0]
+            if versio[0:2] == '2.':
+                selectTouch = 'SELECT ST_Touches((select ST_Line_Substring("Xarxa_Prova"."the_geom",0,'+str(fraction)+') as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select the_geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
+            if versio[0:2] == '3.':
+                selectTouch = 'SELECT ST_Touches((select ST_LineSubstring("Xarxa_Prova"."the_geom",CAST(0 AS FLOAT8),CAST('+str(fraction)+'AS FLOAT8)) as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select the_geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
             try:
                 cur.execute(selectTouch)
                 resposta = cur.fetchall()
@@ -2332,21 +2306,35 @@ class CercaTrajectesEntitats:
                 self.eliminaTaulesCalcul(Fitxer)
                 self.dlg.setEnabled(True)
                 return
-            if edgeAnt != -1:   
-                if resposta[0][0]:
-                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",0,'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
-                else:
-                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+            if edgeAnt != -1:  
+                if versio[0:2] == '2.': 
+                    if resposta[0][0]:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",0,'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                    else:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                if versio[0:2] == '3.':
+                    if resposta[0][0]:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",CAST(0 AS FLOAT8),'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                    else:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+
             else:
                 if ordre == 1:
                     fractForward = vec[x+1][3]
                 else:
                     fractForward = vec[x-1][3]
-                if fraction >= fractForward:
-                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
-                else:
-                    updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
-                        
+
+                if versio[0:2] == '2.':
+                    if fraction >= fractForward:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                    else:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                if versio[0:2] == '3.': 
+                    if fraction >= fractForward:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                    else:
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                            
 
         try:
             cur.execute(updateSegment)
@@ -2552,25 +2540,16 @@ class CercaTrajectesEntitats:
         vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
         QApplication.processEvents()
 
-       
-        '''
-        #   11.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-        '''
         if vlayer.isValid():
-            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31004):
-                save_options = QgsVectorFileWriter.SaveVectorOptions()
-                save_options.driverName = "ESRI Shapefile"
-                save_options.fileEncoding = "UTF-8"
-                transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Camins_"+Cobertura+".shp",transform_context,save_options)
-            else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-            """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Camins_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+            crs = vlayer.dataProvider().sourceCrs()
+            
+            vlayer_temp = QgsVectorLayer("LineString", titol3.decode('utf8'), "memory")
+            vlayer_temp.setCrs(crs)
+            vlayer_temp.dataProvider().addAttributes(vlayer.fields())
+            vlayer_temp.updateFields()
+            vlayer_temp.dataProvider().addFeatures(vlayer.getFeatures())
 
-            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbols = vlayer_temp.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             
             '''Es prepara cada camí de la capa amb diferent color i gruix en funcio de la distància a la que estigui de l'origen '''
@@ -2622,13 +2601,13 @@ class CercaTrajectesEntitats:
             '''S'apliquen els estils a la capa'''
             renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
             renderer.setLabelFormat(format,False) #Si en algún momento hay problema con el texto de los símbolos mostrados en leyenda, podría estar relacionado con este booleano
-            vlayer.setRenderer(renderer)
+            vlayer_temp.setRenderer(renderer)
             QApplication.processEvents()
 
             
-            QgsProject.instance().addMapLayer(vlayer,False)
+            QgsProject.instance().addMapLayer(vlayer_temp,False)
             root = QgsProject.instance().layerTreeRoot()
-            myLayerNode=QgsLayerTreeLayer(vlayer)
+            myLayerNode=QgsLayerTreeLayer(vlayer_temp)
             root.insertChildNode(0,myLayerNode)
             myLayerNode.setCustomProperty("showFeatureCount", False)
             QApplication.processEvents()
@@ -2662,21 +2641,16 @@ class CercaTrajectesEntitats:
         #    12.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
         '''
         if vlayer.isValid():
-            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31004):
-                save_options = QgsVectorFileWriter.SaveVectorOptions()
-                save_options.driverName = "ESRI Shapefile"
-                save_options.fileEncoding = "UTF-8"
-                transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
-            else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-                #error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "latin1", vlayer.crs(), "ESRI Shapefile")
-            """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
+
+            crs = vlayer.dataProvider().crs()
+            vlayer_temp = QgsVectorLayer("Point", titol3.decode('utf8'), "memory")
+            vlayer_temp.setCrs(crs)
+            vlayer_temp.dataProvider().addAttributes(vlayer.fields())
+            vlayer_temp.updateFields()
+            vlayer_temp.dataProvider().addFeatures(vlayer.getFeatures())
+
             #vlayer.setLayerTransparency(50)
-            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbols = vlayer_temp.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             symbol.setColor(QColor.fromRgb(250,50,250))
             '''S'afegeixen totes les propietats a la capa: color, tipus de font de l'etiqueta, colocacio, nom del camp a mostrar, etc'''
@@ -2697,7 +2671,7 @@ class CercaTrajectesEntitats:
             
             layer_settings.isExpression = True
             layer_settings.fieldName = "concat( id,'. ',NomEntitat)"
-            layer_settings.placement = 2
+            layer_settings.placement = QgsPalLayerSettings.AroundPoint
             layer_settings.scaleVisibility = True
             layer_settings.minimumScale = 20000
             layer_settings.maximumScale = 3000
@@ -2705,13 +2679,13 @@ class CercaTrajectesEntitats:
             layer_settings.enabled = True
             
             layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-            vlayer.setLabelsEnabled(True)
-            vlayer.setLabeling(layer_settings)
-            vlayer.triggerRepaint()
+            vlayer_temp.setLabelsEnabled(True)
+            vlayer_temp.setLabeling(layer_settings)
+            vlayer_temp.triggerRepaint()
             QApplication.processEvents()
-            QgsProject.instance().addMapLayer(vlayer,False)
+            QgsProject.instance().addMapLayer(vlayer_temp,False)
             root = QgsProject.instance().layerTreeRoot()
-            myLayerNode=QgsLayerTreeLayer(vlayer)
+            myLayerNode=QgsLayerTreeLayer(vlayer_temp)
             root.insertChildNode(0,myLayerNode)
             myLayerNode.setCustomProperty("showFeatureCount", False)
             QApplication.processEvents()
@@ -2738,29 +2712,21 @@ class CercaTrajectesEntitats:
         titol3=titol2.encode('utf8','strict')+titol.encode('utf8','strict')
         vlayer = QgsVectorLayer(uri.uri(False), titol3.decode('utf8'), "postgres")
         QApplication.processEvents()
-        '''
-        #    13.3 Si la capa és vàlida, es carrega en SHAPE en un arxiu temporal
-        '''
+
         if vlayer.isValid():
-            Cobertura=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-            """Es crea un Shape a la carpeta temporal amb la data i hora actual"""
-            if (qgis.utils.Qgis.QGIS_VERSION_INT>=31004):
-                save_options = QgsVectorFileWriter.SaveVectorOptions()
-                save_options.driverName = "ESRI Shapefile"
-                save_options.fileEncoding = "UTF-8"
-                transform_context = QgsProject.instance().transformContext()
-                error=QgsVectorFileWriter.writeAsVectorFormatV2(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp",transform_context,save_options)
-            else:
-                error=QgsVectorFileWriter.writeAsVectorFormat(vlayer, TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", "utf-8", vlayer.crs(), "ESRI Shapefile")
-            """Es carrega el Shape a l'entorn del QGIS"""
-            vlayer = QgsVectorLayer(TEMPORARY_PATH+"/Entitats_"+Cobertura+".shp", titol3.decode('utf8'), "ogr")
-            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            crs = vlayer.dataProvider().sourceCrs()
+            vlayer_temp = QgsVectorLayer("Point", titol3.decode('utf8'), "memory")
+            vlayer_temp.setCrs(crs)
+            vlayer_temp.dataProvider().addAttributes(vlayer.fields())
+            vlayer_temp.updateFields()
+            vlayer_temp.dataProvider().addFeatures(vlayer.getFeatures())
+            symbols = vlayer_temp.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             '''S'afegeix el color a la nova entitat'''
             symbol.setColor(QColor.fromRgb(50,250,250))
-            QgsProject.instance().addMapLayer(vlayer,False)
+            QgsProject.instance().addMapLayer(vlayer_temp,False)
             root = QgsProject.instance().layerTreeRoot()
-            myLayerNode=QgsLayerTreeLayer(vlayer)
+            myLayerNode=QgsLayerTreeLayer(vlayer_temp)
             root.insertChildNode(0,myLayerNode)
             myLayerNode.setCustomProperty("showFeatureCount", False)
             QApplication.processEvents()
