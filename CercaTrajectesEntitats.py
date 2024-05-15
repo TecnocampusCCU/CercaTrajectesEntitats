@@ -85,7 +85,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.240112"
+Versio_modul="V_Q3.240515"
 nomBD1=""
 contra1=""
 host1=""
@@ -100,6 +100,7 @@ aux=False
 itemSel=None
 lbl_Cost = ''
 TEMPORARY_PATH=""
+versio_db = ""
 
 class CercaTrajectesEntitats:
     """QGIS Plugin Implementation."""
@@ -399,7 +400,7 @@ class CercaTrajectesEntitats:
                 self.barraEstat_connectat()
                 cur = conn.cursor()
                 
-                sql = "select g.f_table_name from geometry_columns g join information_schema.columns c on g.f_table_name = c.table_name where g.type = 'POINT' and g.f_table_schema ='public' and c.table_schema ='public' and c.column_name like 'Nom%'order by 1"
+                sql = "select g.f_table_name from geometry_columns g join information_schema.columns c on g.f_table_name = c.table_name where g.type = 'POINT' and g.f_table_schema ='public' and c.table_schema ='public' and c.column_name like 'name%'order by 1"
                 cur.execute(sql)
                 llista = cur.fetchall()
                 self.ompleCombos(self.dlg.comboCapaDesti, llista, 'Selecciona una entitat', True)
@@ -437,6 +438,83 @@ class CercaTrajectesEntitats:
             aux = False
             self.barraEstat_noConnectat()
             
+    def detect_database_version(self):
+        global cur
+        global conn
+        global versio_db
+
+        sql_versio = "select taula from config where variable = 'versio';"
+        cur.execute(sql_versio)
+        versio_db = cur.fetchone()[0]
+
+        if versio_db == '1.0':
+            try:
+                sql = "select taula from config where variable = 'carrers';"
+                cur.execute(sql)
+                carrers_name = cur.fetchone()[0]
+                sql = "SELECT taula FROM config WHERE variable = 'portals';"
+                cur.execute(sql)
+                portals_name = cur.fetchone()[0]
+                sql = "SELECT taula FROM config WHERE variable = 'xarxa';"
+                cur.execute(sql)
+                xarxa_name = cur.fetchone()[0]
+            except:
+                print("Error al llegir la configuració de la base de dades")
+                QMessageBox.information(None, "Error", "Error al llegir la configuració de la base de dades")
+                return
+            try:
+                cur.execute(f"""
+                            DROP TABLE IF EXISTS thoroughfare;
+                            CREATE LOCAL TEMP TABLE thoroughfare (
+                                id,
+                                type,
+                                name
+                            ) AS SELECT "id", "Tipus", "Nom" FROM "{carrers_name}";
+                            """)
+                conn.commit()
+                cur.execute(f"""
+                            DROP TABLE IF EXISTS address;
+                            CREATE LOCAL TEMP TABLE address (
+                                id_address,
+                                geom,
+                                cadastral_reference,
+                                designator
+                            ) AS SELECT id, geom, "REF_CADAST", "Carrer_Num_Bis" FROM "{portals_name}";
+                            """)
+                conn.commit()
+                cur.execute(f"""
+                            DROP TABLE IF EXISTS stretch;
+                            CREATE LOCAL TEMP TABLE stretch (
+                                id,
+                                cost,
+                                reverse_cost,
+                                semaphores,
+                                total_cost_semaphore,
+                                geom,
+                                source,
+                                target,
+                                length,
+                                direction,
+                                slope_abs,
+                                speed,
+                                reverse_speed
+                            ) AS SELECT "id", "cost", "reverse_cost", "Nombre_Semafors", "Cost_Total_Semafor_Tram", "the_geom", "source", "target", "LENGTH", "SENTIT"::INTEGER, "PENDENT_ABS", "VELOCITAT_PS", "VELOCITAT_PS_INV" FROM "{self.dlg.comboGraf.currentText()}";
+                            """)
+                conn.commit()
+            except:
+                print("Error al crear les taules temporals")
+                QMessageBox.information(None, "Error", "Error al crear les taules temporals")
+                return
+        else:
+            try:
+                sql = "DROP TABLE IF EXISTS parcel_temp;\n"
+                sql += "CREATE TABLE parcel_temp AS SELECT * FROM parcel;"
+                cur.execute(sql)
+                conn.commit()
+            except:
+                print("Error al crear la taula temporal")
+                QMessageBox.information(None, "Error", "Error al crear la taula temporal")
+                return
     
     def cerca_elements_Leyenda(self):
         
@@ -478,7 +556,7 @@ class CercaTrajectesEntitats:
         global conn
         global cur
         self.dlg.comboLletra.clear()
-        sql = "SELECT * from (select distinct(upper(right(\"Carrer_Num_Bis\",1))) from \"dintreilla\" order by 1) consulta where \"upper\"  not in  ('0','1', '2', '3','4','5','6','7','8','9');"
+        sql = "SELECT * from (select distinct(upper(right(\"designator\",1))) from \"address\" order by 1) consulta where \"upper\"  not in  ('0','1', '2', '3','4','5','6','7','8','9');"
         cur.execute(sql)
         rows = cur.fetchall()
         self.ompleCombos(self.dlg.comboLletra, rows, ' ', True)
@@ -499,11 +577,11 @@ class CercaTrajectesEntitats:
         global conn        #Sentencia SQL
         self.dlg.list_carrers.clear()
         #sql = 'select "Codi", "Tipus","Nom" from anterior."NOMENCLATOR"'
-        sql = 'select "Codi", "Tipus","Nom" from "Carrer"'
+        sql = 'select code, type, name from thoroughfare'
         filtre=self.dlg.txt_nomCarrer.text().upper()
         
         filtre = filtre.replace("'", "''")
-        wheresql=" WHERE \"Nom\" LIKE \'%"+filtre+"%\' order by 3;"
+        wheresql=" WHERE \"name\" LIKE \'%"+filtre+"%\' order by 3;"
         total = sql + wheresql
         cur.execute(total)
         rows = cur.fetchall()
@@ -671,7 +749,7 @@ class CercaTrajectesEntitats:
             Si existeix el retorna com a vàlid
             Altrament busca el més proper: Si no en troba cap de vàlid, emet un error
         '''
-        select = 'select count(*) from "dintreilla" where "Carrer_Num_Bis" = \''+ CNB + '\';'
+        select = 'select count(*) from "address" where "designator" = \''+ CNB + '\';'
         cur.execute(select)
         resultat = cur.fetchall()
         if (int(float(resultat[0][0])) >= 1):
@@ -679,12 +757,12 @@ class CercaTrajectesEntitats:
         else:
             create = 'drop table if exists checkNum;\n'
             if self.dlg.bttnProper.isChecked():
-                create += 'create local temp table checkNum as select nullif(SUBSTRING ( "Carrer_Num_Bis" ,6 , 3 ), \'\') ::int as numero from "dintreilla" where "Carrer_Num_Bis" like \'' + carrer +'%\' order by 1;'
+                create += 'create local temp table checkNum as select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address" where "designator" like \'' + carrer +'%\' order by 1;'
             elif self.dlg.bttnProperParell.isChecked():
                 if ((int(float(numero))%2)  == 0):
-                    create += 'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "Carrer_Num_Bis" ,6 , 3 ), \'\') ::int as numero from "dintreilla" where "Carrer_Num_Bis" like \'' + carrer +'%\' order by 1) as num where numero%2 = 0;'
+                    create += 'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address" where "designator" like \'' + carrer +'%\' order by 1) as num where numero%2 = 0;'
                 else:
-                    create += 'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "Carrer_Num_Bis" ,6 , 3 ), \'\') ::int as numero from "dintreilla" where "Carrer_Num_Bis" like \'' + carrer +'%\' order by 1) as num where numero%2 = 1;'
+                    create += 'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address" where "designator" like \'' + carrer +'%\' order by 1) as num where numero%2 = 1;'
                 
             select = 'SELECT * FROM\n'
             select += '((SELECT numero FROM checkNum WHERE numero >= '+ str(int(float(numero))) +' ORDER BY numero LIMIT 1)  UNION\n'
@@ -712,13 +790,13 @@ class CercaTrajectesEntitats:
 
             
             CNBsenseLletra = carrer + str(nouNumero)
-            select = 'select count(*) from "dintreilla" where "Carrer_Num_Bis" = \''+ CNBsenseLletra + 'x\';'
+            select = 'select count(*) from "address" where "designator" = \''+ CNBsenseLletra + 'x\';'
             cur.execute(select)
             resultat = cur.fetchall()
             if (int(float(resultat[0][0])) >= 1):
                 return (CNBsenseLletra + 'x')
             else:
-                select = 'select SUBSTRING ( "Carrer_Num_Bis" ,9 , 1 )as lletra from "dintreilla" where "Carrer_Num_Bis" like \''+ CNBsenseLletra +'%\' order by 1;'
+                select = 'select SUBSTRING ( "designator" ,9 , 1 )as lletra from "address" where "designator" like \''+ CNBsenseLletra +'%\' order by 1;'
                 cur.execute(select)
                 resultat = cur.fetchall()
                 return (CNBsenseLletra + str(resultat[0][0]))
@@ -840,7 +918,7 @@ class CercaTrajectesEntitats:
             # VEL_PS=0
             alg_params = {
                 'FIELD_LENGTH': 10,
-                'FIELD_NAME': 'VELOCITAT_PS',
+                'FIELD_NAME': 'speed',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
                 'FORMULA': '0*0',
@@ -853,7 +931,7 @@ class CercaTrajectesEntitats:
             # VEL_PS_INV=0
             alg_params = {
                 'FIELD_LENGTH': 10,
-                'FIELD_NAME': 'VELOCITAT_PS_INV',
+                'FIELD_NAME': 'reverse_speed',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
                 'FORMULA': '0*0',
@@ -869,7 +947,7 @@ class CercaTrajectesEntitats:
                 'FIELD_NAME': 'VEL_KMH',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
-                'FORMULA': '\"VELOCITAT_PS_INV\"*60/1000',
+                'FORMULA': '\"reverse_speed\"*60/1000',
                 'INPUT': outputs['Vel_ps0']['OUTPUT'],
                 'NEW_FIELD': False,
                 'OUTPUT': 'memory:'
@@ -882,7 +960,7 @@ class CercaTrajectesEntitats:
                 'FIELD_NAME': 'VEL_KMH',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
-                'FORMULA': 'VELOCITAT_PS*60/1000',
+                'FORMULA': 'speed*60/1000',
                 'INPUT': outputs['Vel_ps_inv0']['OUTPUT'],
                 'NEW_FIELD': True,
                 'OUTPUT': 'memory:'
@@ -893,7 +971,7 @@ class CercaTrajectesEntitats:
             # VEL_PS=0
             alg_params = {
                 'FIELD_LENGTH': 10,
-                'FIELD_NAME': 'VELOCITAT_PS_INV',
+                'FIELD_NAME': 'reverse_speed',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
                 'FORMULA': '0*0',
@@ -906,7 +984,7 @@ class CercaTrajectesEntitats:
             # VEL_PS_INV=0
             alg_params = {
                 'FIELD_LENGTH': 10,
-                'FIELD_NAME': 'VELOCITAT_PS_INV',
+                'FIELD_NAME': 'reverse_speed',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
                 'FORMULA': '0*0',
@@ -922,7 +1000,7 @@ class CercaTrajectesEntitats:
                 'FIELD_NAME': 'VEL_KMH',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
-                'FORMULA': '\"VELOCITAT_PS\"*60/1000',
+                'FORMULA': '\"speed\"*60/1000',
                 'INPUT': outputs['Vel_ps0']['OUTPUT'],
                 'NEW_FIELD': False,
                 'OUTPUT': 'memory:'
@@ -935,7 +1013,7 @@ class CercaTrajectesEntitats:
                 'FIELD_NAME': 'VEL_KMH',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
-                'FORMULA': 'VELOCITAT_PS*60/1000',
+                'FORMULA': 'speed*60/1000',
                 'INPUT': outputs['Vel_ps_inv0']['OUTPUT'],
                 'NEW_FIELD': True,
                 'OUTPUT': 'memory:'
@@ -1171,7 +1249,7 @@ class CercaTrajectesEntitats:
                 'FIELD_NAME': 'VEL_KMH',
                 'FIELD_PRECISION': 9,
                 'FIELD_TYPE': 0,
-                'FORMULA': '($length /(($length/((\"VELOCITAT_PS\"+\"VELOCITAT_PS_INV\")))+(\"Cost_Total_Semafor_Tram\"*($length/\"L_TRAM_TEMP\"))))*60/1000',
+                'FORMULA': '($length /(($length/((\"speed\"+\"reverse_speed\")))+(\"total_cost_semaphore\"*($length/\"L_TRAM_TEMP\"))))*60/1000',
                 'INPUT': vl,
                 'NEW_FIELD': False,
                 'OUTPUT': 'memory:'
@@ -1221,37 +1299,23 @@ class CercaTrajectesEntitats:
     
     
     def on_Change_ComboLeyenda(self):
-        """
-        En el moment en que es modifica la opcio escollida 
-        del combo o desplegable de la capa de punts,
-        automÃ ticament comprova els camps de la taula escollida.
-        """
-        
-        L_capa=self.dlg.comboLeyenda.currentText()  
-             
-        if L_capa == '' or L_capa == 'Selecciona una entitat':
+        L_capa = self.dlg.comboLeyenda.currentText()
+
+        if L_capa == '' or L_capa == 'Selecciona capa':
             return
         
-        errors = self.controlEntitatLeyenda(L_capa) #retorna una llista amb aquells camps (id, geom, Nom) que no hi siguin.
+        errors = self.controlEntitatLeyenda(L_capa) # retorna una llista amb aquells camps que no hi siguin
 
-        if len(errors) < 2:  # errors es una llista amb els camps que te la taula, si hi ha menys de 2, significa que falta algun camp.
-            ErrorMessage = "La capa de destí seleccionada no es valida, necessita els camps (id, Nom). Li falten:\n"
-            if "id" not in errors:
-                ErrorMessage+= '\n-"id"\n'
-            #if "geom" not in errors:
-            #    ErrorMessage+= '\n-"geom"\n'
-            if "Nom" not in errors:
-                ErrorMessage+= '\n-"Nom"\n'
-            #if "NPlaces" not in errors:
-            #    ErrorMessage+= '\n-"NPlaces"\n'
-            
-            QMessageBox.information(None, "Error", ErrorMessage+'\n')
-            
-            return False
-    
-        else:
-            #self.dlg.TB_titol.setText(L_capa)
-            return True
+        if not 'id' in errors:
+            alg_params = {
+                'INPUT': L_capa,
+                'FIELD_NAME': 'id',
+                'FIELD_TYPE': 1,
+                'FORMULA': '@id',
+                'OUTPUT': 'memory:'
+            }
+            L_capa = processing.run("qgis:fieldcalculator", alg_params)['OUTPUT']
+        return True
         
     def controlEntitatLeyenda(self,entitat):
         '''
@@ -1269,11 +1333,13 @@ class CercaTrajectesEntitats:
                         for each in layer.fields():
                             if each.name() == "id":
                                 list.append("id")
-                            #elif each.name() == "geom":
-                            #    list.append("geom")
-                            elif each.name() == "Nom":
-                                list.append("Nom")
-        return list     
+                            elif each.name() == "available_places":
+                                list.append("available_places")
+                            elif each.name() == "radius":
+                                list.append("radius")
+                            elif each.name() == "name":
+                                list.append("name")
+        return list   
     
     
     def cerca_elements_Leyenda(self):
@@ -1489,12 +1555,12 @@ class CercaTrajectesEntitats:
         sql_xarxa = 'drop table IF EXISTS "Xarxa_Prova";\n'
         sql_xarxa += 'create local temp table "Xarxa_Prova" as  (select * from "'+self.dlg.comboGraf.currentText()+'");\n'
         if self.dlg.comboCost.currentText() == 'Distancia':
-            sql_xarxa += 'update "Xarxa_Prova" set "cost"="LONGITUD_SEGMENT", "reverse_cost"="LONGITUD_SEGMENT";'
+            sql_xarxa += 'update "Xarxa_Prova" set "cost"="length", "reverse_cost"="length";'
         else:
-            sql_xarxa += 'update "Xarxa_Prova" set "cost"=("LONGITUD_SEGMENT")/("VELOCITAT_PS"), "reverse_cost"=("LONGITUD_SEGMENT")/("VELOCITAT_PS_INV");'
+            sql_xarxa += 'update "Xarxa_Prova" set "cost"=("length")/("speed"), "reverse_cost"=("length")/("reverse_speed");'
             if (self.dlg.chk_CostNusos.isChecked()):
                 """Es suma al camp 'cost' i a 'reverse_cost' el valor dels semafors sempre i quan estigui la opció marcada"""
-                sql_xarxa +='UPDATE "Xarxa_Prova" set "cost"="cost"+(\"Cost_Total_Semafor_Tram\"), \"reverse_cost\"=\"reverse_cost\"+(\"Cost_Total_Semafor_Tram\");\n'
+                sql_xarxa +='UPDATE "Xarxa_Prova" set "cost"="cost"+(\"total_cost_semaphore\"), \"reverse_cost\"=\"reverse_cost\"+(\"total_cost_semaphore\");\n'
         
         try:
             cur.execute(sql_xarxa)
@@ -1517,6 +1583,8 @@ class CercaTrajectesEntitats:
         #    el més proper. I en el cas que no n'existeixi cap, s'envia un missatge d'error
         # ==============================================
         '''
+        while len(itemSel) < 5:
+            itemSel = '0' + itemSel
         numero = self.dlg.txt_Numero.text()
         if int(float(numero)) < 10:
             numero = '00' + numero
@@ -1595,9 +1663,9 @@ class CercaTrajectesEntitats:
         end_lyr = QgsVectorLayer(uri.uri(False), "fin", "postgres")
         QApplication.processEvents()
         
-        sql_punt = 'SELECT * FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+        sql_punt = 'SELECT * FROM  "address" WHERE "designator" = \'' + CNB + '\'' 
         QApplication.processEvents()
-        uri.setDataSource("","("+sql_punt+")","geom","","id")
+        uri.setDataSource("","("+sql_punt+")","geom","","id_address")
         QApplication.processEvents()
         start_lyr = QgsVectorLayer(uri.uri(False), "inici", "postgres")
         QApplication.processEvents()
@@ -1643,8 +1711,8 @@ class CercaTrajectesEntitats:
         
         
         try:
-            #sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
-            sql_inici = 'SELECT ST_X(geom), ST_Y(geom) FROM  "dintreilla" WHERE "Carrer_Num_Bis" = \'' + CNB + '\'' 
+            #sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "address" WHERE "designator" = \'' + CNB + '\'' 
+            sql_inici = 'SELECT ST_X(geom), ST_Y(geom) FROM  "address" WHERE "designator" = \'' + CNB + '\'' 
             # ST_X(geom), ST_Y(geom)
             
             cur.execute(sql_inici)
@@ -1663,7 +1731,7 @@ class CercaTrajectesEntitats:
         
         sql_xarxa="SELECT * FROM \""+self.dlg.comboGraf.currentText()+"\""
         QApplication.processEvents()
-        uri.setDataSource("","("+sql_xarxa+")","the_geom","","id")
+        uri.setDataSource("","("+sql_xarxa+")","geom","","id")
         QApplication.processEvents()
         network_lyr = QgsVectorLayer(uri.uri(False), "xarxa", "postgres")
         QApplication.processEvents()
@@ -1690,7 +1758,7 @@ class CercaTrajectesEntitats:
         resultado['OUTPUT'].startEditing()
         fields = resultado['OUTPUT'].fields()
         for x in range(len(fields)):
-            if('nom' in fields[x].displayName().lower()):
+            if('name' in fields[x].displayName().lower()):
                 resultado['OUTPUT'].renameAttribute(x,'NomEntitat')
             elif(fields[x].displayName()=='id'):
                 resultado['OUTPUT'].renameAttribute(x,'entitatid')
@@ -1722,7 +1790,7 @@ class CercaTrajectesEntitats:
         puntos_destino['OUTPUT'].startEditing()
         fields = puntos_destino['OUTPUT'].fields()
         for x in range(len(fields)):
-            if('nom' in fields[x].displayName().lower()):
+            if('name' in fields[x].displayName().lower()):
                 puntos_destino['OUTPUT'].renameAttribute(x,'NomEntitat')
             elif(fields[x].displayName()=='id'):
                 puntos_destino['OUTPUT'].renameAttribute(x,'entitatid')
@@ -1968,7 +2036,7 @@ class CercaTrajectesEntitats:
         
         create = 'CREATE TABLE NecessaryPoints_'+Fitxer+' (\n'
         create += "\tpid    serial primary key,\n"
-        create += "\tthe_geom geometry,\n"
+        create += "\tgeom geometry,\n"
         create += "\tentitatID int8,\n"
         create += "\tedge_id BIGINT,\n"
         create += "\tfraction FLOAT,\n"
@@ -1990,11 +2058,11 @@ class CercaTrajectesEntitats:
         '''
         #    4.2 S'afegeixen els punts necessaris a la taula
         '''            
-        insert = 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID,the_geom) (SELECT 0, ST_Centroid("geom") the_geom from "dintreilla" where "Carrer_Num_Bis" = \''+CNB+'\');\n'
+        insert = 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID,geom) (SELECT 0, ST_Centroid("geom") geom from "address" where "designator" = \''+CNB+'\');\n'
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
-            insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, the_geom) (SELECT "id", ST_Centroid("geom") the_geom from "' + self.dlg.comboCapaDesti.currentText() + '" order by "id");'
+            insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, geom) (SELECT "id", ST_Centroid("geom") geom from "' + self.dlg.comboCapaDesti.currentText() + '" order by "id");'
         else:
-            insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, the_geom) (SELECT "id", ST_Centroid("geom") the_geom from "LayerExportat'+Fitxer+'" order by "id");'
+            insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, geom) (SELECT "id", ST_Centroid("geom") geom from "LayerExportat'+Fitxer+'" order by "id");'
         
         try:
             cur.execute(insert)
@@ -2016,7 +2084,7 @@ class CercaTrajectesEntitats:
         '''
        
         try:
-            sql_SRID="SELECT Find_SRID('public', '"+self.dlg.comboGraf.currentText()+"', 'the_geom')"
+            sql_SRID="SELECT Find_SRID('public', '"+self.dlg.comboGraf.currentText()+"', 'geom')"
             cur.execute(sql_SRID)
         except Exception as ex:
             print ("ERROR SELECT SRID")
@@ -2037,9 +2105,9 @@ class CercaTrajectesEntitats:
         auxlist = cur.fetchall()
         Valor_SRID=auxlist[0][0]
        
-        update = 'UPDATE NecessaryPoints_'+Fitxer+' SET the_geom = ST_Transform(the_geom,'+str(Valor_SRID)+');\n'
-        update += 'UPDATE NecessaryPoints_'+Fitxer+' set "edge_id"=tram_proper."tram_id" from (SELECT distinct on(Poi."pid") Poi."pid" As Punt_id,Sg."id" as Tram_id, ST_Distance(Sg."the_geom",Poi."the_geom")  as dist FROM "Xarxa_Prova" as Sg,NecessaryPoints_'+Fitxer+' AS Poi ORDER BY  Poi."pid",ST_Distance(Sg."the_geom",Poi."the_geom"),Sg."id") tram_proper where NecessaryPoints_'+Fitxer+'."pid"=tram_proper."punt_id";\n'
-        update += 'UPDATE NecessaryPoints_'+Fitxer+' SET fraction = ST_LineLocatePoint(e.the_geom, NecessaryPoints_'+Fitxer+'.the_geom),newPoint = ST_LineInterpolatePoint(e."the_geom", ST_LineLocatePoint(e."the_geom", NecessaryPoints_'+Fitxer+'."the_geom")) FROM "Xarxa_Prova" AS e WHERE NecessaryPoints_'+Fitxer+'."edge_id" = e."id";\n'
+        update = 'UPDATE NecessaryPoints_'+Fitxer+' SET geom = ST_Transform(geom,'+str(Valor_SRID)+');\n'
+        update += 'UPDATE NecessaryPoints_'+Fitxer+' set "edge_id"=tram_proper."tram_id" from (SELECT distinct on(Poi."pid") Poi."pid" As Punt_id,Sg."id" as Tram_id, ST_Distance(Sg."geom",Poi."geom")  as dist FROM "Xarxa_Prova" as Sg,NecessaryPoints_'+Fitxer+' AS Poi ORDER BY  Poi."pid",ST_Distance(Sg."geom",Poi."geom"),Sg."id") tram_proper where NecessaryPoints_'+Fitxer+'."pid"=tram_proper."punt_id";\n'
+        update += 'UPDATE NecessaryPoints_'+Fitxer+' SET fraction = ST_LineLocatePoint(e.geom, NecessaryPoints_'+Fitxer+'.geom),newPoint = ST_LineInterpolatePoint(e."geom", ST_LineLocatePoint(e."geom", NecessaryPoints_'+Fitxer+'."geom")) FROM "Xarxa_Prova" AS e WHERE NecessaryPoints_'+Fitxer+'."edge_id" = e."id";\n'
         try:
             cur.execute(update)
             conn.commit()
@@ -2089,9 +2157,9 @@ class CercaTrajectesEntitats:
         '''
         try:
             if self.dlg.tabWidget_Destino.currentIndex() == 0:
-                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'Nom';"
+                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = '"+ self.dlg.comboCapaDesti.currentText() +"'and column_name like 'name';"
             else:
-                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = 'LayerExportat"+Fitxer+"'and lower(column_name) like 'nom';"
+                select="SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' and table_name = 'LayerExportat"+Fitxer+"'and lower(column_name) like 'name';"
             cur.execute(select)
             nomCamp = cur.fetchall()
         except Exception as ex:
@@ -2289,9 +2357,9 @@ class CercaTrajectesEntitats:
             cur.execute(sqlVersio)
             versio = cur.fetchall()[0][0]
             if versio[0:2] == '2.':
-                selectTouch = 'SELECT ST_Touches((select ST_Line_Substring("Xarxa_Prova"."the_geom",0,'+str(fraction)+') as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select the_geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
+                selectTouch = 'SELECT ST_Touches((select ST_Line_Substring("Xarxa_Prova"."geom",0,'+str(fraction)+') as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
             if versio[0:2] == '3.':
-                selectTouch = 'SELECT ST_Touches((select ST_LineSubstring("Xarxa_Prova"."the_geom",CAST(0 AS FLOAT8),CAST('+str(fraction)+'AS FLOAT8)) as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select the_geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
+                selectTouch = 'SELECT ST_Touches((select ST_LineSubstring("Xarxa_Prova"."geom",CAST(0 AS FLOAT8),CAST('+str(fraction)+'AS FLOAT8)) as geom from "Xarxa_Prova" where "id"='+str(edge)+'),(select geom as  geom from "Xarxa_Prova" where "id"='+str(edgeAnt)+'));'
             try:
                 cur.execute(selectTouch)
                 resposta = cur.fetchall()
@@ -2309,14 +2377,14 @@ class CercaTrajectesEntitats:
             if edgeAnt != -1:  
                 if versio[0:2] == '2.': 
                     if resposta[0][0]:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",0,'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."geom",0,'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
                     else:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
                 if versio[0:2] == '3.':
                     if resposta[0][0]:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",CAST(0 AS FLOAT8),'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."geom",CAST(0 AS FLOAT8),'+str(fraction)+') from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
                     else:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."geom",'+str(fraction)+',1) from "Xarxa_Prova" s where sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
 
             else:
                 if ordre == 1:
@@ -2326,14 +2394,14 @@ class CercaTrajectesEntitats:
 
                 if versio[0:2] == '2.':
                     if fraction >= fractForward:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
                     else:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."the_geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_Line_Substring(s."geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
                 if versio[0:2] == '3.': 
                     if fraction >= fractForward:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."geom",'+str(fractForward)+','+str(fraction)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
                     else:
-                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."the_geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
+                        updateSegment += 'update "SegmentsFinals" sf set "cutEdge" = ST_LineSubstring(s."geom",'+str(fraction)+','+str(fractForward)+') from "Xarxa_Prova" s where sf."ordreTram" = '+ str(ordre)+' and sf."edge"='+str(edge)+' and s."id"='+str(edge)+' and sf."routeid" = '+str(vec[x][0])+';\n'
                             
 
         try:
@@ -2354,7 +2422,7 @@ class CercaTrajectesEntitats:
         #    7. S'afegeix i s'actualitza el camp de geometria a la taula resultat
         '''
         alter = 'ALTER TABLE "Resultat" ADD COLUMN newEdge geometry;\n'
-        alter += 'update "Resultat" r set newedge = s.the_geom from "Xarxa_Prova" s where s.id = r.edge;'
+        alter += 'update "Resultat" r set newedge = s.geom from "Xarxa_Prova" s where s.id = r.edge;'
 
         try:
             cur.execute(alter)
@@ -2465,7 +2533,7 @@ class CercaTrajectesEntitats:
             if x < len(vec) and x >= 1:
                 createTrams += 'UNION\n'
                 
-            createTrams += 'select entitatid, \'' + str(vec[x][0].replace("'","''")) +'\' as "NomEntitatDesti" ,'+str(round(vec[x][1],rnd))+' as agg_cost, ST_Union(newedge) as the_geom from "Resultat" where entitatid = '+str(vec[x][2])+' group by entitatid\n'
+            createTrams += 'select entitatid, \'' + str(vec[x][0].replace("'","''")) +'\' as "NomEntitatDesti" ,'+str(round(vec[x][1],rnd))+' as agg_cost, ST_Union(newedge) as geom from "Resultat" where entitatid = '+str(vec[x][2])+' group by entitatid\n'
         
         createTrams += ")total order by agg_cost asc;"
         QApplication.processEvents()
@@ -2511,7 +2579,7 @@ class CercaTrajectesEntitats:
         '''
         sql_total = 'select row_number() OVER() AS "id",* from "TramsNous_'+Fitxer+'"'
         QApplication.processEvents()
-        uri.setDataSource("","("+sql_total+")","the_geom","","entitatid")
+        uri.setDataSource("","("+sql_total+")","geom","","entitatid")
         QApplication.processEvents()
         
         try:
@@ -2621,9 +2689,9 @@ class CercaTrajectesEntitats:
         #    12. S'afegeixen els punts de destí a pantalla amb les corresponents etiquetes amb els seus noms
         #    12.1 Es seleccionen les dades que es vol mostrar
         '''
-        sql_total = 'select row_number() OVER(order by t."agg_cost") AS "id",n.entitatid, n.the_geom, t."NomEntitatDesti" as "NomEntitat" from "TramsNous_'+Fitxer+'" t join NecessaryPoints_'+Fitxer+' n on n.entitatid = t.entitatid order by t."agg_cost" ASC'
+        sql_total = 'select row_number() OVER(order by t."agg_cost") AS "id",n.entitatid, n.geom, t."NomEntitatDesti" as "NomEntitat" from "TramsNous_'+Fitxer+'" t join NecessaryPoints_'+Fitxer+' n on n.entitatid = t.entitatid order by t."agg_cost" ASC'
         QApplication.processEvents()
-        uri.setDataSource("","("+sql_total+")","the_geom","","id")
+        uri.setDataSource("","("+sql_total+")","geom","","id")
         QApplication.processEvents()
 
         '''
@@ -2699,9 +2767,9 @@ class CercaTrajectesEntitats:
         #    13. S'afegeix el punt d'origen a pantalla
         #    13.1 Es selecciona la dada que es vol mostrar
         '''
-        sql_total = 'select pid, the_geom from NecessaryPoints_'+Fitxer+' where pid = 1'
+        sql_total = 'select pid, geom from NecessaryPoints_'+Fitxer+' where pid = 1'
         QApplication.processEvents()
-        uri.setDataSource("","("+sql_total+")","the_geom","","pid")
+        uri.setDataSource("","("+sql_total+")","geom","","pid")
         QApplication.processEvents()
         
         '''
