@@ -85,7 +85,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.240515"
+Versio_modul="V_Q3.240517"
 nomBD1=""
 contra1=""
 host1=""
@@ -399,6 +399,17 @@ class CercaTrajectesEntitats:
                 conn = psycopg2.connect(estructura)
                 self.barraEstat_connectat()
                 cur = conn.cursor()
+
+                try:
+                    self.detect_database_version()
+                except Exception as ex:
+                    print ("Error al detectar la versió de la base de dades")
+                    template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                    message = template.format(type(ex).__name__, ex.args)
+                    print (message)
+                    QMessageBox.information(None, "Error", "Error al detectar la versió de la base de dades")
+                    conn.rollback()
+                    return
                 
                 sql = "select g.f_table_name from geometry_columns g join information_schema.columns c on g.f_table_name = c.table_name where g.type = 'POINT' and g.f_table_schema ='public' and c.table_schema ='public' and c.column_name like 'name%'order by 1"
                 cur.execute(sql)
@@ -452,29 +463,39 @@ class CercaTrajectesEntitats:
                 sql = "select taula from config where variable = 'carrers';"
                 cur.execute(sql)
                 carrers_name = cur.fetchone()[0]
+                print(f"Nom de la taula carrers: {carrers_name}")
                 sql = "SELECT taula FROM config WHERE variable = 'portals';"
                 cur.execute(sql)
                 portals_name = cur.fetchone()[0]
-                sql = "SELECT taula FROM config WHERE variable = 'xarxa';"
-                cur.execute(sql)
-                xarxa_name = cur.fetchone()[0]
+                print(f"Nom de la taula portals: {portals_name}")
+                #if self.dlg.comboGraf.currentText() != "Selecciona una entitat" or self.dlg.comboGraf.currentText() != "" or self.dlg.comboGraf.currentText() is not None or self.dlg.comboGraf.currentText() != None or self.dlg.comboGraf.currentText() != " ":
+                if self.dlg.comboGraf.count() > 0:
+                    xarxa_name = self.dlg.comboGraf.currentText()
+                    print("xarxa_name agafat del combo")
+                else:
+                    sql = "SELECT taula FROM config WHERE variable = 'xarxa';"
+                    cur.execute(sql)
+                    xarxa_name = cur.fetchone()[0]
+                    print("Xarxa_name agafat de la base de dades")
+                print(xarxa_name)
             except:
                 print("Error al llegir la configuració de la base de dades")
                 QMessageBox.information(None, "Error", "Error al llegir la configuració de la base de dades")
                 return
             try:
                 cur.execute(f"""
-                            DROP TABLE IF EXISTS thoroughfare;
-                            CREATE LOCAL TEMP TABLE thoroughfare (
-                                id,
+                            DROP TABLE IF EXISTS thoroughfare{Fitxer};
+                            CREATE TABLE thoroughfare{Fitxer} (
+                                code,
                                 type,
                                 name
-                            ) AS SELECT "id", "Tipus", "Nom" FROM "{carrers_name}";
+                            ) AS SELECT "Codi", "Tipus", "Nom" FROM "{carrers_name}";
                             """)
                 conn.commit()
+                print("Taula thoroughfare creada")
                 cur.execute(f"""
-                            DROP TABLE IF EXISTS address;
-                            CREATE LOCAL TEMP TABLE address (
+                            DROP TABLE IF EXISTS address{Fitxer};
+                            CREATE TABLE address{Fitxer} (
                                 id_address,
                                 geom,
                                 cadastral_reference,
@@ -482,9 +503,10 @@ class CercaTrajectesEntitats:
                             ) AS SELECT id, geom, "REF_CADAST", "Carrer_Num_Bis" FROM "{portals_name}";
                             """)
                 conn.commit()
+                print("Taula address creada")
                 cur.execute(f"""
-                            DROP TABLE IF EXISTS stretch;
-                            CREATE LOCAL TEMP TABLE stretch (
+                            DROP TABLE IF EXISTS stretch{Fitxer};
+                            CREATE TABLE stretch{Fitxer} (
                                 id,
                                 cost,
                                 reverse_cost,
@@ -498,22 +520,17 @@ class CercaTrajectesEntitats:
                                 slope_abs,
                                 speed,
                                 reverse_speed
-                            ) AS SELECT "id", "cost", "reverse_cost", "Nombre_Semafors", "Cost_Total_Semafor_Tram", "the_geom", "source", "target", "LENGTH", "SENTIT"::INTEGER, "PENDENT_ABS", "VELOCITAT_PS", "VELOCITAT_PS_INV" FROM "{self.dlg.comboGraf.currentText()}";
+                            ) AS SELECT "id", "cost", "reverse_cost", "Nombre_Semafors", "Cost_Total_Semafor_Tram", "the_geom", "source", "target", "LENGTH", "SENTIT"::INTEGER, "PENDENT_ABS", "VELOCITAT_PS", "VELOCITAT_PS_INV" FROM "{xarxa_name}";
                             """)
                 conn.commit()
-            except:
-                print("Error al crear les taules temporals")
-                QMessageBox.information(None, "Error", "Error al crear les taules temporals")
-                return
-        else:
-            try:
-                sql = "DROP TABLE IF EXISTS parcel_temp;\n"
-                sql += "CREATE TABLE parcel_temp AS SELECT * FROM parcel;"
-                cur.execute(sql)
-                conn.commit()
-            except:
-                print("Error al crear la taula temporal")
-                QMessageBox.information(None, "Error", "Error al crear la taula temporal")
+                print(f"Taula stretch{Fitxer} creada")
+            except Exception as ex:
+                missatge = "Error al crear les taules temporals"
+                print(missatge)
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print(message)
+                QMessageBox.information(None, "Error", missatge)
                 return
     
     def cerca_elements_Leyenda(self):
@@ -556,7 +573,7 @@ class CercaTrajectesEntitats:
         global conn
         global cur
         self.dlg.comboLletra.clear()
-        sql = "SELECT * from (select distinct(upper(right(\"designator\",1))) from \"address\" order by 1) consulta where \"upper\"  not in  ('0','1', '2', '3','4','5','6','7','8','9');"
+        sql = f"SELECT * from (select distinct(upper(right(\"designator\",1))) from \"address{Fitxer}\" order by 1) consulta where \"upper\"  not in  ('0','1', '2', '3','4','5','6','7','8','9');"
         cur.execute(sql)
         rows = cur.fetchall()
         self.ompleCombos(self.dlg.comboLletra, rows, ' ', True)
@@ -577,7 +594,7 @@ class CercaTrajectesEntitats:
         global conn        #Sentencia SQL
         self.dlg.list_carrers.clear()
         #sql = 'select "Codi", "Tipus","Nom" from anterior."NOMENCLATOR"'
-        sql = 'select code, type, name from thoroughfare'
+        sql = f'select code, type, name from thoroughfare{Fitxer}'
         filtre=self.dlg.txt_nomCarrer.text().upper()
         
         filtre = filtre.replace("'", "''")
@@ -749,7 +766,7 @@ class CercaTrajectesEntitats:
             Si existeix el retorna com a vàlid
             Altrament busca el més proper: Si no en troba cap de vàlid, emet un error
         '''
-        select = 'select count(*) from "address" where "designator" = \''+ CNB + '\';'
+        select = f'select count(*) from "address{Fitxer}" where "designator" = \'{CNB}\';'
         cur.execute(select)
         resultat = cur.fetchall()
         if (int(float(resultat[0][0])) >= 1):
@@ -757,12 +774,12 @@ class CercaTrajectesEntitats:
         else:
             create = 'drop table if exists checkNum;\n'
             if self.dlg.bttnProper.isChecked():
-                create += 'create local temp table checkNum as select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address" where "designator" like \'' + carrer +'%\' order by 1;'
+                create += f'create local temp table checkNum as select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address{Fitxer}" where "designator" like \'' + carrer +'%\' order by 1;'
             elif self.dlg.bttnProperParell.isChecked():
                 if ((int(float(numero))%2)  == 0):
-                    create += 'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address" where "designator" like \'' + carrer +'%\' order by 1) as num where numero%2 = 0;'
+                    create += f'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address{Fitxer}" where "designator" like \'' + carrer +'%\' order by 1) as num where numero%2 = 0;'
                 else:
-                    create += 'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address" where "designator" like \'' + carrer +'%\' order by 1) as num where numero%2 = 1;'
+                    create += f'create local temp table checkNum as select * from (select nullif(SUBSTRING ( "designator" ,6 , 3 ), \'\') ::int as numero from "address{Fitxer}" where "designator" like \'' + carrer +'%\' order by 1) as num where numero%2 = 1;'
                 
             select = 'SELECT * FROM\n'
             select += '((SELECT numero FROM checkNum WHERE numero >= '+ str(int(float(numero))) +' ORDER BY numero LIMIT 1)  UNION\n'
@@ -790,13 +807,13 @@ class CercaTrajectesEntitats:
 
             
             CNBsenseLletra = carrer + str(nouNumero)
-            select = 'select count(*) from "address" where "designator" = \''+ CNBsenseLletra + 'x\';'
+            select = f'select count(*) from "address{Fitxer}" where "designator" = \''+ CNBsenseLletra + 'x\';'
             cur.execute(select)
             resultat = cur.fetchall()
             if (int(float(resultat[0][0])) >= 1):
                 return (CNBsenseLletra + 'x')
             else:
-                select = 'select SUBSTRING ( "designator" ,9 , 1 )as lletra from "address" where "designator" like \''+ CNBsenseLletra +'%\' order by 1;'
+                select = f'select SUBSTRING ( "designator" ,9 , 1 )as lletra from "address{Fitxer}" where "designator" like \''+ CNBsenseLletra +'%\' order by 1;'
                 cur.execute(select)
                 resultat = cur.fetchall()
                 return (CNBsenseLletra + str(resultat[0][0]))
@@ -1383,15 +1400,12 @@ class CercaTrajectesEntitats:
         global lbl_Cost
         global Fitxer
         
-        self.dlg.setEnabled(False)
-        Fitxer=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-        
+        self.dlg.setEnabled(False)        
         
         self.dlg.taulaResultat.clear()
         self.eliminaTaula()
         self.dlg.lbl_numpol.setText('')
         QApplication.processEvents()
-        Fitxer=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
         
         
             
@@ -1417,6 +1431,7 @@ class CercaTrajectesEntitats:
         uri = QgsDataSourceUri()
         try:
             uri.setConnection(host1,port1,nomBD1,usuari1,contra1)
+            self.detect_database_version()
         except Exception as ex:
             print ("Error a la connexio")
             template = "An exception of type {0} occurred. Arguments:\n{1!r}"
@@ -1553,7 +1568,7 @@ class CercaTrajectesEntitats:
         '''     
            
         sql_xarxa = 'drop table IF EXISTS "Xarxa_Prova";\n'
-        sql_xarxa += 'create local temp table "Xarxa_Prova" as  (select * from "'+self.dlg.comboGraf.currentText()+'");\n'
+        sql_xarxa += f'create local temp table "Xarxa_Prova" as  (select * from "stretch{Fitxer}");\n'
         if self.dlg.comboCost.currentText() == 'Distancia':
             sql_xarxa += 'update "Xarxa_Prova" set "cost"="length", "reverse_cost"="length";'
         else:
@@ -1663,7 +1678,7 @@ class CercaTrajectesEntitats:
         end_lyr = QgsVectorLayer(uri.uri(False), "fin", "postgres")
         QApplication.processEvents()
         
-        sql_punt = 'SELECT * FROM  "address" WHERE "designator" = \'' + CNB + '\'' 
+        sql_punt = f'SELECT * FROM  "address{Fitxer}" WHERE "designator" = \'' + CNB + '\'' 
         QApplication.processEvents()
         uri.setDataSource("","("+sql_punt+")","geom","","id_address")
         QApplication.processEvents()
@@ -1712,7 +1727,7 @@ class CercaTrajectesEntitats:
         
         try:
             #sql_inici = 'SELECT "UTM_x","UTM_y" FROM  "address" WHERE "designator" = \'' + CNB + '\'' 
-            sql_inici = 'SELECT ST_X(geom), ST_Y(geom) FROM  "address" WHERE "designator" = \'' + CNB + '\'' 
+            sql_inici = f'SELECT ST_X(geom), ST_Y(geom) FROM  "address{Fitxer}" WHERE "designator" = \'' + CNB + '\'' 
             # ST_X(geom), ST_Y(geom)
             
             cur.execute(sql_inici)
@@ -1729,7 +1744,7 @@ class CercaTrajectesEntitats:
             self.dlg.setEnabled(True)
             return
         
-        sql_xarxa="SELECT * FROM \""+self.dlg.comboGraf.currentText()+"\""
+        sql_xarxa=f"SELECT * FROM \"stretch{Fitxer}\""
         QApplication.processEvents()
         uri.setDataSource("","("+sql_xarxa+")","geom","","id")
         QApplication.processEvents()
@@ -2058,7 +2073,7 @@ class CercaTrajectesEntitats:
         '''
         #    4.2 S'afegeixen els punts necessaris a la taula
         '''            
-        insert = 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID,geom) (SELECT 0, ST_Centroid("geom") geom from "address" where "designator" = \''+CNB+'\');\n'
+        insert = f'INSERT INTO NecessaryPoints_{Fitxer} (entitatID,geom) (SELECT 0, ST_Centroid("geom") geom from "address{Fitxer}" where "designator" = \''+CNB+'\');\n'
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
             insert += 'INSERT INTO NecessaryPoints_'+Fitxer+' (entitatID, geom) (SELECT "id", ST_Centroid("geom") geom from "' + self.dlg.comboCapaDesti.currentText() + '" order by "id");'
         else:
@@ -2084,7 +2099,7 @@ class CercaTrajectesEntitats:
         '''
        
         try:
-            sql_SRID="SELECT Find_SRID('public', '"+self.dlg.comboGraf.currentText()+"', 'geom')"
+            sql_SRID=f"SELECT Find_SRID('public', 'stretch{Fitxer}', 'geom')"
             cur.execute(sql_SRID)
         except Exception as ex:
             print ("ERROR SELECT SRID")
@@ -2821,6 +2836,11 @@ class CercaTrajectesEntitats:
             #cur.execute('DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';\n')
             cur.execute('DROP TABLE IF EXISTS "SegmentsFinals";\n')
             cur.execute('DROP TABLE IF EXISTS "LayerExportat'+Fitxer+'";\n')
+
+            cur.execute(f'DROP TABLE IF EXISTS "address{Fitxer}";\n')
+            cur.execute(f'DROP TABLE IF EXISTS "stretch{Fitxer}";\n')
+            cur.execute(f'DROP TABLE IF EXISTS "thoroughfare{Fitxer}";\n')
+
             conn.commit()
         except Exception as ex:
             print("Error DROP final")
@@ -2914,6 +2934,7 @@ class CercaTrajectesEntitats:
             self.toolbar.removeAction(action)
 
     def run(self):
+        global Fitxer
         """Run method that performs all the real work"""
         # show the dialog
         self.estatInicial()
@@ -2921,6 +2942,7 @@ class CercaTrajectesEntitats:
         conn=self.getConnections()
         # Run the dialog event loop
         self.populateComboBox(self.dlg.comboConnexio ,conn,'Selecciona connexió',True)
+        Fitxer=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
