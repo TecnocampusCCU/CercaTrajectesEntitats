@@ -10,7 +10,7 @@
 name=CercaTrajectesEntitats
 qgisMinimumVersion=3.2
 description=CercaTrajectesEntitats
-version=Q3.240515
+version=Q3.240522
 author=Josep Lopez
 email=jlopez@tecnocampus.cat
 
