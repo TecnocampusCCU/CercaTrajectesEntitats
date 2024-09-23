@@ -85,7 +85,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.240522"
+Versio_modul="V_Q3.240923"
 nomBD1=""
 contra1=""
 host1=""
@@ -101,6 +101,7 @@ itemSel=None
 lbl_Cost = ''
 TEMPORARY_PATH=""
 versio_db = ""
+connexioFeta = False
 
 class CercaTrajectesEntitats:
     """QGIS Plugin Implementation."""
@@ -146,7 +147,7 @@ class CercaTrajectesEntitats:
         self.dlg.comboLeyenda.currentIndexChanged.connect(self.on_Change_ComboLeyenda)
         self.dlg.bt_ReloadLeyenda.clicked.connect(self.cerca_elements_Leyenda)
 
-        
+        self.dlg.rejected.connect(self.on_click_Sortir)
 
         # Declare instance attributes
         self.actions = []
@@ -266,10 +267,14 @@ class CercaTrajectesEntitats:
 
 
     def on_click_Sortir(self):
+        global connexioFeta
         '''
         Tanca la finestra del plugin 
         '''
         self.estatInicial()
+        if connexioFeta:
+            self.eliminaTaulesCalcul(Fitxer)
+            connexioFeta = False
         self.dlg.close()
         
     def getConnections(self):
@@ -361,6 +366,7 @@ class CercaTrajectesEntitats:
         global schema
         global cur
         global conn
+        global connexioFeta
         s = QSettings()
         self.dlg.comboCapaDesti.clear()
         self.dlg.comboLeyenda.clear()
@@ -399,6 +405,7 @@ class CercaTrajectesEntitats:
                 conn = psycopg2.connect(estructura)
                 self.barraEstat_connectat()
                 cur = conn.cursor()
+                connexioFeta = True
 
                 try:
                     self.detect_database_version()
@@ -2850,6 +2857,10 @@ class CercaTrajectesEntitats:
             #cur.execute('DROP TABLE IF EXISTS NecessaryPoints_'+Fitxer+';\n')
             cur.execute('DROP TABLE IF EXISTS "SegmentsFinals";\n')
             cur.execute('DROP TABLE IF EXISTS "LayerExportat'+Fitxer+'";\n')
+            cur.execute(f"DROP TABLE IF EXISTS thoroughfare_{Fitxer};\n")
+            cur.execute(f"DROP TABLE IF EXISTS stretch_{Fitxer};\n")
+            cur.execute(f"DROP TABLE IF EXISTS stretch_{Fitxer}_vertices_pgr;\n")
+            cur.execute(f"DROP TABLE IF EXISTS address_{Fitxer};\n")
             conn.commit()
         except Exception as ex:
             print("Error DROP final")
@@ -2951,7 +2962,7 @@ class CercaTrajectesEntitats:
         conn=self.getConnections()
         # Run the dialog event loop
         self.populateComboBox(self.dlg.comboConnexio ,conn,'Selecciona connexió',True)
-        Fitxer=datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+        Fitxer="ccu_temp"+datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
