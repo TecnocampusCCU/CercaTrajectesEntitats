@@ -24,6 +24,8 @@
 
 import sys
 import os
+
+import requests
 # import processing
 from qgis import processing
 from os.path import expanduser
@@ -35,6 +37,7 @@ from qgis.core import QgsDataSourceUri
 from qgis.core import QgsVectorLayer
 from qgis.core import QgsFeatureRequest
 from qgis.core import QgsField
+from qgis.core import QgsFields
 from qgis.core import QgsPoint
 from qgis.core import QgsPointXY
 from qgis.core import QgsFeatureRenderer
@@ -62,6 +65,7 @@ from qgis.core import QgsVectorLayerExporter
 from qgis.core import QgsCoordinateReferenceSystem
 from qgis.core import QgsFeature
 from qgis.core import QgsGeometry
+from qgis.core import QgsCoordinateTransform
 
 import psycopg2
 import unicodedata
@@ -85,7 +89,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.240923"
+Versio_modul="V_Q3.250109"
 nomBD1=""
 contra1=""
 host1=""
@@ -146,6 +150,8 @@ class CercaTrajectesEntitats:
         self.dlg.comboCost.currentIndexChanged.connect(self.changeComboCost)
         self.dlg.comboLeyenda.currentIndexChanged.connect(self.on_Change_ComboLeyenda)
         self.dlg.bt_ReloadLeyenda.clicked.connect(self.cerca_elements_Leyenda)
+        self.dlg.chk_valhalla.clicked.connect(self.on_Change_Valhalla)
+        self.dlg.chk_Local.clicked.connect(self.on_Change_Local)
 
         self.dlg.rejected.connect(self.on_click_Sortir)
 
@@ -348,7 +354,28 @@ class CercaTrajectesEntitats:
         boto.setChecked(False)
         boto.setStyleSheet('background-color: rgb(255, 156, 156)')
         
-        
+    def on_Change_Local(self):
+        if self.dlg.chk_Local.isChecked():
+            self.dlg.chk_valhalla.setChecked(False)
+            self.dlg.comboGraf.setEnabled(True)
+            self.dlg.chk_CostNusos.setEnabled(True)
+            self.dlg.label_transport.setVisible(False)
+            self.dlg.comboTransport.setVisible(False)
+
+    def on_Change_Valhalla(self):
+        if self.dlg.chk_valhalla.isChecked():
+            self.dlg.chk_Local.setChecked(False)
+            self.dlg.comboGraf.setEnabled(False)
+            self.dlg.chk_CostNusos.setChecked(False)
+            self.dlg.chk_CostNusos.setEnabled(False)
+            self.dlg.label_transport.setVisible(True)
+            self.dlg.comboTransport.setVisible(True)
+        else:
+            self.dlg.chk_Local.setEnabled(True)
+            self.dlg.comboGraf.setEnabled(True)
+            self.dlg.chk_CostNusos.setEnabled(True)
+            self.dlg.label_transport.setVisible(False)
+            self.dlg.comboTransport.setVisible(False)
         
     def on_Change_ComboConn(self):
         """
@@ -372,7 +399,7 @@ class CercaTrajectesEntitats:
         self.dlg.comboLeyenda.clear()
         self.dlg.comboGraf.clear()
         self.dlg.comboLletra.clear()
-        self.dlg.txt_nomCarrer.clear()
+        #self.dlg.txt_nomCarrer.clear()
         self.dlg.txt_Numero.clear()
         self.dlg.list_carrers.clear()
         select = 'Selecciona connexió'
@@ -430,6 +457,7 @@ class CercaTrajectesEntitats:
                 
                 self.cerca_elements_Leyenda()
                 
+                conn.commit()
                 
             except Exception as ex:
                 print ("I am unable to connect to the database")
@@ -452,6 +480,9 @@ class CercaTrajectesEntitats:
                 QMessageBox.information(None, "Error", "Error canvi connexió")
                 conn.rollback
                 return
+
+            self.dlg.txt_nomCarrer.clear()
+
         else:
             aux = False
             self.barraEstat_noConnectat()
@@ -704,6 +735,11 @@ class CercaTrajectesEntitats:
         lbl_Cost = 'Distància (m)'
         self.dlg.chk_Local.setChecked(True)
         self.dlg.chk_Local.setEnabled(True)
+        self.dlg.chk_valhalla.setChecked(False)
+        self.dlg.chk_valhalla.setEnabled(True)
+        self.dlg.comboTransport.setCurrentIndex(0)
+        self.dlg.label_transport.setVisible(False)
+        self.dlg.comboTransport.setVisible(False)
         self.dlg.tabWidget_Destino.setCurrentIndex(0)
         self.dlg.setEnabled(True)
         if (os.name=='nt'):
@@ -758,8 +794,10 @@ class CercaTrajectesEntitats:
             errors.append('El carrer de la llista no està correctament seleccionat')
         if self.dlg.comboCapaDesti.currentText() == '':
             errors.append('No hi ha cap capa de destí disponible')
-        if self.dlg.comboGraf.currentText() == 'Selecciona una entitat':
+        if self.dlg.comboGraf.currentText() == 'Selecciona una entitat' and not self.dlg.chk_valhalla.isChecked():
             errors.append("No hi ha seleccionada cap capa de xarxa")
+        if self.dlg.chk_Local.isChecked() and self.dlg.chk_valhalla.isChecked():
+            errors.append("No es pot seleccionar Valhalla i Local alhora")
         if self.dlg.tabWidget_Destino.currentIndex() == 0:
             if self.dlg.comboCapaDesti.currentText() == 'Selecciona una entitat':
                 errors.append('No hi ha cap capa de destí seleccionada')
@@ -1674,7 +1712,8 @@ class CercaTrajectesEntitats:
         
         if(self.dlg.chk_Local.isChecked()):
             self.local(CNB,uri)     
-        
+        elif(self.dlg.chk_valhalla.isChecked()):
+            self.valhalla(CNB,uri)
         else:
             self.server(CNB)
         '''
@@ -2845,7 +2884,400 @@ class CercaTrajectesEntitats:
         '''
 
         self.eliminaTaulesCalcul(Fitxer)
-  
+
+    def valhalla(self, CNB, uri):
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            sql_punts = 'SELECT * FROM \"' + self.dlg.comboCapaDesti.currentText() + '\"'
+        else:
+            sql_punts = 'SELECT * FROM \"LayerExportat'+Fitxer+'\";'
+
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_punts+")","geom","","id")
+        QApplication.processEvents()
+        end_lyr = QgsVectorLayer(uri.uri(False), "fin", "postgres")
+        QApplication.processEvents()
+
+        sql_punt = f'SELECT * FROM  "address_{Fitxer}" WHERE "designator" = \'' + CNB + '\'' 
+        QApplication.processEvents()
+        uri.setDataSource("","("+sql_punt+")","geom","","id_address")
+        QApplication.processEvents()
+        start_lyr = QgsVectorLayer(uri.uri(False), "inici", "postgres")
+        QApplication.processEvents()
+
+        titol = self.dlg.lbl_numpol.text()
+        titol2 = 'Entitat d\'origen: '
+        titol3 = titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = start_lyr
+        QApplication.processEvents()
+
+        if vlayer.isValid():
+            crs = vlayer.dataProvider().sourceCrs()
+            vlayer_temp = QgsVectorLayer("Point", titol3.decode('utf8'), "memory")
+            vlayer_temp.setCrs(crs)
+            vlayer_temp.dataProvider().addAttributes(vlayer.fields())
+            vlayer_temp.updateFields()
+            vlayer_temp.dataProvider().addFeatures(vlayer.getFeatures())
+            symbols = vlayer_temp.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            symbol.setColor(QColor.fromRgb(50,250,250))
+            QgsProject.instance().addMapLayer(vlayer_temp,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer_temp)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            iface.mapCanvas().refresh()
+        else:
+            print("falla perque vlayer no es valid")
+            QMessageBox.information(None, "LAYER ERROR 3:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+
+        crs_desti = QgsCoordinateReferenceSystem('EPSG:4326')
+        crs_origen = QgsProject.instance().crs()
+        if not crs_origen.isValid():
+            print("El sistema de coordenades del projecte no és vàlid. Assignant EPSG: 25831 com a predeterminat.")
+            crs_origen = QgsCoordinateReferenceSystem('EPSG:25831')
+        transform_context = QgsProject.instance().transformContext()
+        coord_transformer = QgsCoordinateTransform(crs_origen, crs_desti, transform_context)
+        coordenades1 = []
+        coordenades2 = []
+
+        names = []
+
+        for feature in start_lyr.getFeatures():
+            start_geom = feature.geometry()
+            start_id = feature['id_address']
+            if start_geom and not start_geom.isMultipart():
+                start_point = start_geom.asPoint()
+                start_point_wgs84 = coord_transformer.transform(start_point)
+                start_lon = start_point_wgs84.x()
+                start_lat = start_point_wgs84.y()
+                coordenades1.append((f"{start_lon},{start_lat}", start_id))
+
+        for feature in end_lyr.getFeatures():
+            end_geom = feature.geometry()
+            end_id = feature['id']
+            name = feature['name']
+            if end_geom and not end_geom.isMultipart():
+                end_point = end_geom.asPoint()
+                end_point_wgs84 = coord_transformer.transform(end_point)
+                end_lon = end_point_wgs84.x()
+                end_lat = end_point_wgs84.y()
+                coordenades2.append((f"{end_lon},{end_lat}", end_id))
+            names.append(name)
+
+        QApplication.processEvents()
+
+        rutes = []
+        costs = []
+        ids = []
+
+        if self.dlg.comboTransport.currentText() == 'Vianant':
+            go = 'pedestrian'
+        elif self.dlg.comboTransport.currentText() == 'Bicicleta':
+            go = 'bicycle'
+        elif self.dlg.comboTransport.currentText() == 'Cotxe':
+            go = 'auto'
+        else:
+            QMessageBox.information(None, "Error", "Transport no reconegut.")
+            self.dlg.setEnabled(True)
+            return
+
+        for coord1, id1 in coordenades1:
+            for coord2, id2 in coordenades2:
+                params = {
+                    "mode": "valhalla",
+                    "service": "route",
+                    "go": go,
+                    "orig": coord1,
+                    "dest": coord2
+                }
+                response = requests.get("http://ccuserver.tecnocampus.cat/routing/", params=params)
+                if response.status_code == 200:
+                    try:
+                        result = response.json()
+                    except ValueError:
+                        print("La resposta del servidor no és un JSON vàlid. Resposta rebuda: ", response.text)
+                        QMessageBox.information(None, "Error", "La resposta del servidor no és un JSON vàlid.")
+                        self.dlg.setEnabled(True)
+                        return
+                    
+                    if 'trip' in result and 'legs' in result['trip']:
+                        for leg in result['trip']['legs']:
+                            shape_encoded = leg['shape']
+                            if self.dlg.comboCost.currentText() == 'Distancia':
+                                cost = leg['summary']['length']
+                            else:
+                                cost = leg['summary']['time']
+                            coords = self.decode_polyline(shape_encoded)
+                            rutes.append(coords)
+                            if self.dlg.comboCost.currentText() == 'Distancia':
+                                costs.append(cost*1000)
+                            else:
+                                costs.append(cost/60)
+                            # id1 = id_address || id2 = id
+                            #ids.append((id1, id2))
+                            ids.append(id2)
+                    else:
+                        print("Error al servidor Valhalla. Codi d'estat: ", response.status_code)
+                        QMessageBox.information(None, "Error", "Error al servidor Valhalla. Codi d'estat: " + str(response.status_code))
+                        self.dlg.setEnabled(True)
+                        return
+                    
+        crs_origen = QgsCoordinateReferenceSystem('EPSG:4326')
+        crs_desti = QgsProject.instance().crs()
+        transform_context = QgsProject.instance().transformContext()
+        coord_transformer = QgsCoordinateTransform(crs_origen, crs_desti, transform_context)
+
+        layer = QgsVectorLayer(f"LineString?crs={crs_desti}", "Rutes Valhalla", "memory")
+        prov = layer.dataProvider()
+        layer.updateFields()
+
+        fields = QgsFields()
+        fields.append(QgsField('name', QVariant.String))
+        fields.append(QgsField('cost', QVariant.Double))
+        fields.append(QgsField('id', QVariant.Int))
+        prov.addAttributes(fields)
+        layer.updateFields()
+
+        for ruta, cost, id, name in zip(rutes, costs, ids, names):
+        #for ruta in rutes:
+            transformed_coords = [
+                coord_transformer.transform(QgsPointXY(lon, lat)) for lon, lat in ruta
+            ]
+            line = QgsGeometry.fromPolylineXY(transformed_coords)
+            feature = QgsFeature(fields)
+            feature.setAttribute('name', name)
+            feature.setGeometry(line)
+            feature.setAttribute('cost', cost)
+            feature.setAttribute('id', id)
+            prov.addFeature(feature)
+
+        layer.updateExtents()
+        QApplication.processEvents()
+
+        ''' Resta del codi de la funció local '''
+
+        ''' Borrar trams sobrants '''
+
+        features = layer.getFeatures(QgsFeatureRequest().addOrderBy('cost',True))
+        try:
+            limit = self.getLimit()
+        except Exception as ex:
+            print ("Error getLimit")
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(ex).__name__, ex.args)
+            print (message)
+            QMessageBox.information(None, "Error", "Error getLimit")
+            conn.rollback()
+            self.eliminaTaulesCalcul(Fitxer)
+            self.dlg.setEnabled(True)
+            return
+
+        layer.startEditing()
+        fields = layer.fields()
+        for x in range(len(fields)):
+            if('name' in fields[x].displayName().lower()):
+                layer.renameAttribute(x, 'NomEntitat')
+            elif(fields[x].displayName()=='id'):
+                layer.renameAttribute(x, 'entitatid')
+            elif(fields[x].displayName()=='cost'):
+                layer.renameAttribute(x, 'agg_cost')
+        layer.addAttribute(QgsField('ordre', QVariant.Int))
+        layer.commitChanges()
+        
+        layer.startEditing()
+        featureOrdreList = []
+        x = 0
+        for feature in features:
+            if x>=limit:
+                layer.deleteFeature(feature.id())
+            else:
+                self.getIndexOrdre(layer)
+                layer.changeAttributeValue(feature.id(), self.getIndexOrdre(layer), x+1)
+                featureOrdreList.append(feature.id())
+            x += 1
+        layer.commitChanges()
+
+        ''' Borrar punts sobrants '''
+
+        punts_desti = self.save_vlayer(end_lyr)
+        punts_desti['OUTPUT'].startEditing()
+        fields = punts_desti['OUTPUT'].fields()
+        for x in range(len(fields)):
+            if('name' in fields[x].displayName().lower()):
+                punts_desti['OUTPUT'].renameAttribute(x, 'NomEntitat')
+            elif(fields[x].displayName()=='id'):
+                punts_desti['OUTPUT'].renameAttribute(x, 'entitatid')
+        punts_desti['OUTPUT'].addAttribute(QgsField('ordre', QVariant.Int))
+        punts_desti['OUTPUT'].commitChanges()
+
+        features = punts_desti['OUTPUT'].getFeatures()
+        punts_desti['OUTPUT'].startEditing()
+        for feature in features:
+            if self.featureNotInResult(feature, layer):
+                punts_desti['OUTPUT'].deleteFeature(feature.id())
+            else:
+                punts_desti['OUTPUT'].changeAttributeValue(feature.id(),self.getIndexOrdre(punts_desti['OUTPUT']),self.compareToGetOrdre(feature,layer))
+        punts_desti['OUTPUT'].commitChanges()
+
+        ''' Borrar atributs sobrants del resultat '''
+        
+        layer.startEditing()
+        indexAttributesToDelete = []
+        for x in range(len(layer.attributeList())):
+            if layer.attributeDisplayName(x) != 'ordre' and layer.attributeDisplayName(x) != 'entitatid' and layer.attributeDisplayName(x) != 'NomEntitat' and layer.attributeDisplayName(x) != 'agg_cost':
+                indexAttributesToDelete.append(x)
+        layer.deleteAttributes(indexAttributesToDelete)
+        layer.commitChanges()
+
+        ''' Borrar atributs sobrants dels destins '''
+
+        punts_desti['OUTPUT'].startEditing()
+        indexAttributesToDelete.clear()
+        for x in range(len(punts_desti['OUTPUT'].attributeList())):
+            if punts_desti['OUTPUT'].attributeDisplayName(x) != 'ordre' and punts_desti['OUTPUT'].attributeDisplayName(x) != 'entitatid' and punts_desti['OUTPUT'].attributeDisplayName(x) != 'NomEntitat':
+                indexAttributesToDelete.append(x)
+        punts_desti['OUTPUT'].deleteAttributes(indexAttributesToDelete)
+        punts_desti['OUTPUT'].commitChanges()
+
+        ''' Representació a taulaResultat '''
+
+        rowCount = self.dlg.taulaResultat.rowCount()
+        self.dlg.taulaResultat.setColumnCount(2)
+        self.dlg.taulaResultat.setHorizontalHeaderLabels(['Entitat', lbl_Cost])
+        for x in range(rowCount,limit):
+            self.dlg.taulaResultat.insertRow(x)
+            feature = layer.getFeature(featureOrdreList[x])
+            self.dlg.taulaResultat.setItem(x, 0, QTableWidgetItem(str(feature['NomEntitat'])))
+            if self.dlg.comboCost.currentText() == 'Distancia':
+                self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round(feature['agg_cost']))))
+            else:
+                self.dlg.taulaResultat.setItem(x, 1, QTableWidgetItem(str(round((feature['agg_cost']),1))))
+
+        ''' Representació camins de destí '''
+
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            titol=self.dlg.comboCapaDesti.currentText()
+        else:
+            titol=self.dlg.comboLeyenda.currentText()
+
+        titol2 = 'Camins més propers a '
+        titol3 = titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        layer.setName(titol3.decode('utf8'))
+        QApplication.processEvents()
+
+        if layer.isValid():
+            symbols = layer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            GradSymMin = 0
+            GradSymMax = limit
+            GradSymNoOfClasses = limit
+            GradSymInterval = 1.0
+            myRangeList = []
+            gruix = 2.5
+            interval = float(gruix/limit)
+
+            for x in range (GradSymNoOfClasses):
+                if x == 0:
+                    min = 0
+                    max = 1
+                    color = QColor(0, 255, 255*x/GradSymNoOfClasses)
+                elif x == (GradSymNoOfClasses - 1):
+                    min = GradSymMax-1
+                    max = GradSymMax
+                    color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
+                else:
+                    min = int(GradSymMin)+(GradSymInterval*x)+0.001
+                    max = int(GradSymMin)+GradSymInterval*(x+1)
+                    color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
+
+                feature = layer.getFeature(featureOrdreList[x])
+                label = str(feature['ordre']) + ". " +str(feature['NomEntitat'])
+                symbol=QgsLineSymbol()
+
+                registry = QgsSymbolLayerRegistry()
+                lineMeta = registry.symbolLayerMetadata("SimpleLine")
+                lineLayer = lineMeta.createSymbolLayer({'width': '1', 'color': '255,0,0', 'offset': '0', 'penstyle': 'solid', 'use_custom_dash': '0', 'joinstyle': 'bevel', 'capstyle': 'round'})
+
+                symbol.deleteSymbolLayer(0)
+                symbol.appendSymbolLayer(lineLayer)
+
+                symbol.setWidth(gruix)
+                symbol.setColor(color)
+
+                ranger = QgsRendererRange(min, max, symbol, label)
+                myRangeList.append(ranger)
+                gruix -= float(interval)
+
+            fieldname="ordre"
+            format = QgsRendererRangeLabelFormat()
+
+            renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)
+            renderer.setLabelFormat(format,False)
+            renderer.setOrderByEnabled(True)
+            listOrder = []
+            listOrder.append(QgsFeatureRequest.OrderByClause("ordre",True))
+            renderer.setOrderBy(QgsFeatureRequest.OrderBy(listOrder))
+            layer.setRenderer(renderer)
+            QApplication.processEvents()
+
+            QgsProject.instance().addMapLayer(layer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(layer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            iface.mapCanvas().refresh()
+            self.eliminaTaulesCalcul(Fitxer)
+        else:
+            QMessageBox.information(None, "LAYER ERROR 1:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+
+        ''' S'afegeixen els punts de destí a pantalla amb les corresponents etiquetes amb els seus noms 
+            Es prepara el títol de la capa que apareixerà a la llegenda '''
+        if self.dlg.tabWidget_Destino.currentIndex() == 0:
+            titol=self.dlg.comboCapaDesti.currentText()
+        else:
+            titol=self.dlg.comboLeyenda.currentText()
+        titol2 = 'Entitats de destí '
+        titol3 = titol2.encode('utf8','strict')+titol.encode('utf8','strict')
+        vlayer = punts_desti['OUTPUT']
+        QApplication.processEvents()
+
+        if vlayer.isValid():
+            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            symbol=symbols[0]
+            symbol.setColor(QColor.fromRgb(250,50,250))
+            layer_settings = QgsPalLayerSettings()
+            text_format = QgsTextFormat()
+            buffer_settings = QgsTextBufferSettings()
+            buffer_settings.setEnabled(True)
+            buffer_settings.setSize(1)
+            buffer_settings.setColor(QColor("white"))
+            text_format.setBuffer(buffer_settings)
+            layer_settings.setFormat(text_format)
+            layer_settings.isExpression = True
+            layer_settings.fieldName = "concat( ordre,'. ',NomEntitat)"
+            layer_settings.placement = QgsPalLayerSettings.AroundPoint
+            layer_settings.scaleVisibility = True
+            layer_settings.minimumScale = 20000
+            layer_settings.maximumScale = 3000
+            layer_settings.enabled = True
+            layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+            vlayer.setLabelsEnabled(True)
+            vlayer.setLabeling(layer_settings)
+            vlayer.triggerRepaint()
+            QApplication.processEvents()
+            QgsProject.instance().addMapLayer(vlayer,False)
+            root = QgsProject.instance().layerTreeRoot()
+            myLayerNode=QgsLayerTreeLayer(vlayer)
+            root.insertChildNode(0,myLayerNode)
+            myLayerNode.setCustomProperty("showFeatureCount", False)
+            QApplication.processEvents()
+            iface.mapCanvas().setExtent(vlayer.extent())
+            iface.mapCanvas().refresh()
+        else:
+            QMessageBox.information(None, "LAYER ERROR 2:", "%s\n\nThe layer %s is not valid" % ("error","nom_layer"))
+
     def eliminaTaulesCalcul(self,Fitxer):
         global cur
         global conn
@@ -2939,6 +3371,30 @@ class CercaTrajectesEntitats:
         self.dlg.lblEstatConn.setStyleSheet('border:1px solid #000000; background-color: #ffff7f')
         self.dlg.lblEstatConn.setText('Connectant...')
         QApplication.processEvents()
+
+    def decode_polyline(self, encoded_polyline):
+        """Decodifica una polyline codificada en el formato de Google Polyline."""
+        inv = 1.0 / 1e6
+
+        decoded = []
+        previous = [0, 0]
+        i = 0
+
+        while i < len(encoded_polyline):
+            ll = [0, 0]
+            for j in [0, 1]:
+                shift = 0
+                byte = 0x20
+                while byte >= 0x20:
+                    byte = ord(encoded_polyline[i]) - 63
+                    i += 1
+                    ll[j] |= (byte & 0x1f) << shift
+                    shift += 5
+                ll[j] = previous[j] + (~(ll[j] >> 1) if ll[j] & 1 else (ll[j] >> 1))
+                previous[j] = ll[j]
+            decoded.append([float('%.6f' % (ll[1] * inv)), float('%.6f' % (ll[0] * inv))])
+
+        return decoded
         
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
