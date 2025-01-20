@@ -89,7 +89,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.250109"
+Versio_modul="V_Q3.250120"
 nomBD1=""
 contra1=""
 host1=""
@@ -505,7 +505,7 @@ class CercaTrajectesEntitats:
                 cur.execute(sql)
                 portals_name = cur.fetchone()[0]
 
-                if self.dlg.comboGraf.count() > 0:
+                if self.dlg.comboGraf.count() > 0 and self.dlg.comboGraf.currentText() != 'Selecciona una entitat' and self.dlg.comboGraf.currentText() != '':
                     xarxa_name = self.dlg.comboGraf.currentText()
                 else:
                     sql = "SELECT taula FROM config WHERE variable = 'xarxa';"
@@ -555,8 +555,8 @@ class CercaTrajectesEntitats:
                             ) AS SELECT "id", "cost", "reverse_cost", "Nombre_Semafors", "Cost_Total_Semafor_Tram", "the_geom", "source", "target", "LENGTH", "SENTIT"::INTEGER, "PENDENT_ABS", "VELOCITAT_PS", "VELOCITAT_PS_INV" FROM "{xarxa_name}";
                             """)
                 conn.commit()
-            except:
-                print("Error al crear les taules temporals")
+            except Exception as ex:
+                print("Error al crear les taules temporals: ", ex)
                 QMessageBox.information(None, "Error", "Error al crear les taules temporals")
                 return
         else:
