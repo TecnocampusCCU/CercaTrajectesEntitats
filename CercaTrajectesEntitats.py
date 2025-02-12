@@ -53,6 +53,8 @@ from qgis.core import QgsLineSymbol
 from qgis.core import QgsSymbolLayerRegistry
 from qgis.core import QgsRandomColorRamp
 from qgis.core import QgsRendererRangeLabelFormat
+from qgis.core import QgsClassificationMethod
+from qgis.core import QgsClassificationEqualInterval
 from qgis.core import QgsProject
 from qgis.core import QgsLayerTreeLayer
 from qgis.core import QgsRenderContext
@@ -89,7 +91,7 @@ from itertools import dropwhile
 Variables globals per a la connexio
 i per guardar el color dels botons
 """
-Versio_modul="V_Q3.250120"
+Versio_modul="V_Q3.250212"
 nomBD1=""
 contra1=""
 host1=""
@@ -1956,15 +1958,15 @@ class CercaTrajectesEntitats:
                 if x == 0:
                     min = 0
                     max = 1
-                    color = QColor(0, 255, 255*x/GradSymNoOfClasses)
+                    color = QColor(0, 255, int(255*x/GradSymNoOfClasses))
                 elif x == (GradSymNoOfClasses - 1):
                     min = GradSymMax-1
                     max = GradSymMax
-                    color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
+                    color =  QColor(int(255*x/GradSymNoOfClasses), 0, 0)
                 else:
                     min = int(GradSymMin)+(GradSymInterval*x)+0.001
                     max = int(GradSymMin)+GradSymInterval*(x+1)
-                    color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
+                    color = QColor(int(255*x/GradSymNoOfClasses), int(255-(255*x/GradSymNoOfClasses)), 0)
                 
                 feature = resultado['OUTPUT'].getFeature(featureOrdreList[x])
                 label = str(feature['ordre']) + ". " +str(feature['NomEntitat'])
@@ -1987,12 +1989,13 @@ class CercaTrajectesEntitats:
 
             '''Es renderitzen els estils de cada cami'''
             fieldname='ordre'
-            format = QgsRendererRangeLabelFormat()
+            #format = QgsRendererRangeLabelFormat("", 2)
+            format = QgsClassificationEqualInterval()
             
             '''S'apliquen els estils a la capa'''
             renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
-            renderer.setLabelFormat(format,False) #Si en algún momento hay problema con el texto de los símbolos mostrados en leyenda, podría estar relacionado con este booleano
-
+            #renderer.setLabelFormat(format,False) #Si en algún momento hay problema con el texto de los símbolos mostrados en leyenda, podría estar relacionado con este booleano
+            renderer.setClassificationMethod(format)
             
             renderer.setOrderByEnabled(True)
             listOrder = []
@@ -2709,15 +2712,15 @@ class CercaTrajectesEntitats:
                 if x == 0:
                     min = 0
                     max = 1
-                    color = QColor(0, 255, 255*x/GradSymNoOfClasses)
+                    color = QColor(0, 255, int(255*x/GradSymNoOfClasses))
                 elif x == (GradSymNoOfClasses - 1):
                     min = GradSymMax-1
                     max = GradSymMax
-                    color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
+                    color =  QColor(int(255*x/GradSymNoOfClasses), 0, 0)
                 else:
                     min = int(GradSymMin)+(GradSymInterval*x)+0.001
                     max = int(GradSymMin)+GradSymInterval*(x+1)
-                    color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
+                    color = QColor(int(255*x/GradSymNoOfClasses), int(255-(255*x/GradSymNoOfClasses)), 0)
                 
                 label = str(resultat[x][0]) + ". " +str(resultat[x][2])                    
                 symbol=QgsLineSymbol()
@@ -2739,11 +2742,13 @@ class CercaTrajectesEntitats:
 
             '''Es renderitzen els estils de cada cami'''
             fieldname="id"
-            format = QgsRendererRangeLabelFormat()
+            #format = QgsRendererRangeLabelFormat("", 2)
+            format = QgsClassificationEqualInterval()
             
             '''S'apliquen els estils a la capa'''
             renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)           
-            renderer.setLabelFormat(format,False) #Si en algún momento hay problema con el texto de los símbolos mostrados en leyenda, podría estar relacionado con este booleano
+            #renderer.setLabelFormat(format,False) #Si en algún momento hay problema con el texto de los símbolos mostrados en leyenda, podría estar relacionado con este booleano
+            renderer.setClassificationMethod(format)
             vlayer_temp.setRenderer(renderer)
             QApplication.processEvents()
 
@@ -3181,15 +3186,15 @@ class CercaTrajectesEntitats:
                 if x == 0:
                     min = 0
                     max = 1
-                    color = QColor(0, 255, 255*x/GradSymNoOfClasses)
+                    color = QColor(0, 255, int(255*x/GradSymNoOfClasses))
                 elif x == (GradSymNoOfClasses - 1):
                     min = GradSymMax-1
                     max = GradSymMax
-                    color =  QColor(255*x/GradSymNoOfClasses, 0, 0)
+                    color =  QColor(int(255*x/GradSymNoOfClasses), 0, 0)
                 else:
                     min = int(GradSymMin)+(GradSymInterval*x)+0.001
                     max = int(GradSymMin)+GradSymInterval*(x+1)
-                    color = QColor(255*x/GradSymNoOfClasses, 255-(255*x/GradSymNoOfClasses), 0)
+                    color = QColor(int(255*x/GradSymNoOfClasses), int(255-(255*x/GradSymNoOfClasses)), 0)
 
                 feature = layer.getFeature(featureOrdreList[x])
                 label = str(feature['ordre']) + ". " +str(feature['NomEntitat'])
@@ -3210,10 +3215,12 @@ class CercaTrajectesEntitats:
                 gruix -= float(interval)
 
             fieldname="ordre"
-            format = QgsRendererRangeLabelFormat()
+            #format = QgsRendererRangeLabelFormat("", 2)
+            format = QgsClassificationEqualInterval()
 
             renderer = QgsGraduatedSymbolRenderer(fieldname,myRangeList)
-            renderer.setLabelFormat(format,False)
+            #renderer.setLabelFormat(format,False)
+            renderer.setClassificationMethod(format)
             renderer.setOrderByEnabled(True)
             listOrder = []
             listOrder.append(QgsFeatureRequest.OrderByClause("ordre",True))
@@ -3244,32 +3251,48 @@ class CercaTrajectesEntitats:
         QApplication.processEvents()
 
         if vlayer.isValid():
-            symbols = vlayer.renderer().symbols(QgsRenderContext())
+            crs = vlayer.dataProvider().sourceCrs()
+            vlayer_temp = QgsVectorLayer("Point", titol3.decode('utf8'), "memory")
+            vlayer_temp.setCrs(crs)
+            vlayer_temp.dataProvider().addAttributes(vlayer.fields())
+            vlayer_temp.updateFields()
+            vlayer_temp.dataProvider().addFeatures(vlayer.getFeatures())
+
+            symbols = vlayer_temp.renderer().symbols(QgsRenderContext())
             symbol=symbols[0]
             symbol.setColor(QColor.fromRgb(250,50,250))
+
             layer_settings = QgsPalLayerSettings()
             text_format = QgsTextFormat()
+
+            text_format.setFont(QFont("Arial", 16))
+            text_format.setSize(16)
+
             buffer_settings = QgsTextBufferSettings()
             buffer_settings.setEnabled(True)
             buffer_settings.setSize(1)
             buffer_settings.setColor(QColor("white"))
+
             text_format.setBuffer(buffer_settings)
             layer_settings.setFormat(text_format)
+
             layer_settings.isExpression = True
             layer_settings.fieldName = "concat( ordre,'. ',NomEntitat)"
             layer_settings.placement = QgsPalLayerSettings.AroundPoint
             layer_settings.scaleVisibility = True
             layer_settings.minimumScale = 20000
             layer_settings.maximumScale = 3000
+
             layer_settings.enabled = True
+
             layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-            vlayer.setLabelsEnabled(True)
-            vlayer.setLabeling(layer_settings)
-            vlayer.triggerRepaint()
+            vlayer_temp.setLabelsEnabled(True)
+            vlayer_temp.setLabeling(layer_settings)
+            vlayer_temp.triggerRepaint()
             QApplication.processEvents()
-            QgsProject.instance().addMapLayer(vlayer,False)
+            QgsProject.instance().addMapLayer(vlayer_temp,False)
             root = QgsProject.instance().layerTreeRoot()
-            myLayerNode=QgsLayerTreeLayer(vlayer)
+            myLayerNode=QgsLayerTreeLayer(vlayer_temp)
             root.insertChildNode(0,myLayerNode)
             myLayerNode.setCustomProperty("showFeatureCount", False)
             QApplication.processEvents()
